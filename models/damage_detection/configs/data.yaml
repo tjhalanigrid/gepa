@@ -1,0 +1,14 @@
+# YOLO Damage Detection Dataset Config
+path: ../datasets/CarDD_release/CarDD_COCO  # dataset root dir
+train: train2017                          # train images
+val: val2017                              # val images
+test: test2017                            # test images
+
+# Classes
+names:
+  0: dent
+  1: scratch
+  2: crack
+  3: tear
+  4: puncture
+  5: smashed

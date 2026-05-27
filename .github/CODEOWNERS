@@ -1,0 +1,23 @@
+# CODEOWNERS File
+# Defines specific user groups or members responsible for reviewing modifications in their module areas.
+
+# Global fallback reviewer
+*                               @kokumar
+
+# Machine Learning Modules
+/models/damage_detection/       @member1
+/models/part_segmentation/      @member2
+/models/plate_rc_detection/     @member3
+/models/vlm_reasoning/          @member4
+
+# Pipeline Orchestration
+/pipeline/                      @member1 @member4
+
+# Backend & Database migrations
+/backend/                       @member6
+
+# Streamlit Front-end
+/dashboard/                     @member5
+
+# Shared Package Utilities
+/shared/                        @kokumar

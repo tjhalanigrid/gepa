@@ -1,0 +1,5 @@
+# Claims Pipeline Dependencies
+pydantic>=2.0
+pyyaml>=6.0
+faker>=19.0.0
+pandas>=2.0.0
