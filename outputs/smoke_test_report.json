@@ -1,0 +1,20 @@
+{
+  "image_path": "/Users/emaheshwari/Desktop/veh_dmg_detection/data/examples/damage example 1.jpg",
+  "damage_part_map": [
+    {
+      "damage": "broken glass",
+      "part": "window",
+      "severity": "severe",
+      "cost_min": 5000,
+      "cost_max": 10000
+    }
+  ],
+  "total_min": 5000,
+  "total_max": 10000,
+  "currency": "INR",
+  "approval_decision": "AUTO_APPROVED",
+  "tool_call_log": [],
+  "total_inference_s": 73.74,
+  "warnings": [],
+  "raw_vlm_response": "```json\n{\n  \"damage_part_map\": [\n    {\n      \"damage\": \"broken glass\",\n      \"part\": \"window\",\n      \"severity\": \"severe\",\n      \"cost_min\": 5000,\n      \"cost_max\": 10000\n    }\n  ],\n  \"total_min\": 5000,\n  \"total_max\": 10000,\n  \"currency\": \"INR\",\n  \"warnings\": []\n}\n```<|im_end|>"
+}

@@ -1,0 +1,70 @@
+vlm:
+  model_id: "Qwen/Qwen2-VL-7B-Instruct"
+  device: "mps"                        # Apple Silicon MPS; change to "cuda" on GPU host
+  max_new_tokens_tool: 120
+  max_new_tokens_final: 160
+  temperature: 0.1
+  do_sample: false
+  max_iterations: 2
+  codeact_max_retries: 2
+  codeact_min_confidence: 0.70
+  image_max_dim: 640
+
+approval:
+  auto_approve_threshold_inr: 50000
+
+damage_detection:
+  weights_path: "models/damage_detection/models/best.pt"
+  confidence_threshold: 0.15
+  device: "cpu"
+  merge_iou_threshold: 0.30
+  merge_same_class_only: true
+
+part_segmentation:
+  grounding_dino:
+    config_path: "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py"
+    weights_path: "weights/groundingdino_swint_ogc.pth"
+    box_threshold: 0.30
+    text_threshold: 0.25
+    text_prompt: "front bumper . rear bumper . hood . car door . windshield . rear windshield . fender . trunk lid . roof panel . headlight . taillight"
+  sam2:
+    config: "sam2_hiera_base_plus.yaml"
+    weights_path: "weights/sam2.1_hiera_base_plus.pt"
+    device: "mps"
+  postprocess:
+    min_mask_area_px: 500
+    allow_duplicate_labels: false
+  output:
+    save_annotated_images: true
+    annotated_output_dir: "outputs/part_segmentation/"
+
+plate_rc_detection:
+  weights_path: "models/plate_rc_detection/plate.pt"
+  device: "cpu"
+  enabled: false                        # set to true only when model is ready
+
+database:
+  url: "postgresql://localhost:5432/veh_dmg_db"
+
+storage:
+  image_upload_dir: "data/uploads/"
+  output_dir: "outputs/"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+
+trajectories:
+  raw_dir: "data/trajectories/raw"
+  approved_dir: "data/trajectories/approved"
+  rejected_dir: "data/trajectories/rejected"
+  min_quality_for_sft: 0.60
+
+sft:
+  base_model_id: "Qwen/Qwen2-VL-2B-Instruct"
+  output_dir: "models/fine_tuned"
+  lora_r: 8
+  lora_alpha: 16
+  epochs: 3
+  batch_size: 1
+  grad_accumulation: 8

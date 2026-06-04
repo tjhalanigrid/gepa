@@ -1,0 +1,286 @@
+
+<style>
+.ann-canvas-wrap{position:relative;background:#1a1a1a;border-radius:8px;overflow:hidden;user-select:none;}
+.bbox{position:absolute;border:2px solid;border-radius:3px;cursor:move;box-sizing:border-box;}
+.bbox-label{position:absolute;top:-22px;left:0;font-size:11px;font-weight:500;padding:2px 7px;border-radius:3px 3px 0 0;white-space:nowrap;cursor:pointer;}
+.bbox-handle{position:absolute;width:10px;height:10px;border-radius:2px;right:-5px;bottom:-5px;cursor:se-resize;}
+.bbox-del{position:absolute;top:-22px;right:-1px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:0 3px 0 0;font-size:13px;cursor:pointer;font-weight:700;}
+.cls-dent{border-color:#378ADD;} .cls-dent .bbox-label{background:#378ADD;color:#042C53;} .cls-dent .bbox-handle{background:#378ADD;} .cls-dent .bbox-del{background:#185FA5;color:#B5D4F4;}
+.cls-scratch{border-color:#1D9E75;} .cls-scratch .bbox-label{background:#1D9E75;color:#04342C;} .cls-scratch .bbox-handle{background:#1D9E75;} .cls-scratch .bbox-del{background:#0F6E56;color:#9FE1CB;}
+.cls-crack{border-color:#BA7517;} .cls-crack .bbox-label{background:#BA7517;color:#412402;} .cls-crack .bbox-handle{background:#BA7517;} .cls-crack .bbox-del{background:#854F0B;color:#FAC775;}
+.cls-glass_shatter{border-color:#D4537E;} .cls-glass_shatter .bbox-label{background:#D4537E;color:#4B1528;} .cls-glass_shatter .bbox-handle{background:#D4537E;} .cls-glass_shatter .bbox-del{background:#993556;color:#F4C0D1;}
+.cls-lamp_broken{border-color:#D85A30;} .cls-lamp_broken .bbox-label{background:#D85A30;color:#4A1B0C;} .cls-lamp_broken .bbox-handle{background:#D85A30;} .cls-lamp_broken .bbox-del{background:#993C1D;color:#F5C4B3;}
+.cls-tire_flat{border-color:#888780;} .cls-tire_flat .bbox-label{background:#888780;color:#2C2C2A;} .cls-tire_flat .bbox-handle{background:#888780;} .cls-tire_flat .bbox-del{background:#5F5E5A;color:#D3D1C7;}
+.bbox.selected{outline:2px dashed #fff;outline-offset:2px;}
+.ref-car{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;}
+.ref-part{font-size:11px;padding:4px 8px;border-radius:4px;background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);cursor:default;}
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.tool-btn{font-size:12px;padding:5px 10px;border-radius:6px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);cursor:pointer;}
+.tool-btn.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);}
+.tool-btn:hover{background:var(--color-background-secondary);}
+.cls-pill{font-size:11px;padding:3px 9px;border-radius:10px;cursor:pointer;border:1.5px solid transparent;font-weight:500;}
+.edit-panel{margin-top:8px;padding:10px 12px;border-radius:8px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-secondary);}
+.edit-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;}
+.edit-row label{color:var(--color-text-secondary);min-width:58px;}
+.edit-row select{flex:1;font-size:13px;}
+.conf-badge{font-size:11px;padding:2px 7px;border-radius:10px;font-weight:500;}
+</style>
+
+<h2 class="sr-only">Bbox annotation canvas mockup for vehicle damage correction</h2>
+
+<div style="display:grid;grid-template-columns:1fr 260px;gap:12px;align-items:start;">
+
+  <div>
+    <div class="toolbar">
+      <button class="tool-btn active" id="btn-select" onclick="setTool('select')"><i class="ti ti-cursor-text" aria-hidden="true" style="font-size:13px;margin-right:4px"></i>Select</button>
+      <button class="tool-btn" id="btn-draw" onclick="setTool('draw')"><i class="ti ti-rectangle" aria-hidden="true" style="font-size:13px;margin-right:4px"></i>Draw new box</button>
+      <button class="tool-btn" onclick="clearSel()" style="margin-left:auto;color:var(--color-text-danger)"><i class="ti ti-trash" aria-hidden="true" style="font-size:13px;margin-right:4px"></i>Delete selected</button>
+    </div>
+
+    <div class="ann-canvas-wrap" id="canvas" style="height:280px;"
+      onmousedown="canvasDown(event)" onmousemove="canvasMove(event)" onmouseup="canvasUp(event)">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0.13;font-size:13px;color:#fff;pointer-events:none;">car image renders here</div>
+
+      <div class="bbox cls-dent selected" id="b0" style="left:18%;top:12%;width:31%;height:28%;" onclick="selectBox(event,'b0')">
+        <div class="bbox-label" onclick="openEdit('b0',event)">dent · 0.71</div>
+        <div class="bbox-del" onclick="deleteBox('b0',event)">×</div>
+        <div class="bbox-handle" onmousedown="startResize(event,'b0')"></div>
+      </div>
+
+      <div class="bbox cls-scratch" id="b1" style="left:55%;top:38%;width:26%;height:18%;" onclick="selectBox(event,'b1')">
+        <div class="bbox-label" onclick="openEdit('b1',event)">scratch · 0.44</div>
+        <div class="bbox-del" onclick="deleteBox('b1',event)">×</div>
+        <div class="bbox-handle" onmousedown="startResize(event,'b1')"></div>
+      </div>
+
+      <div class="bbox cls-lamp_broken" id="b2" style="left:62%;top:8%;width:20%;height:22%;" onclick="selectBox(event,'b2')">
+        <div class="bbox-label" onclick="openEdit('b2',event)">lamp_broken · 0.88</div>
+        <div class="bbox-del" onclick="deleteBox('b2',event)">×</div>
+        <div class="bbox-handle" onmousedown="startResize(event,'b2')"></div>
+      </div>
+
+      <div id="draw-rect" style="display:none;position:absolute;border:1.5px dashed #fff;border-radius:2px;pointer-events:none;"></div>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;" id="legend">
+      <span class="cls-pill" style="background:#E6F1FB;color:#0C447C;border-color:#378ADD;">dent</span>
+      <span class="cls-pill" style="background:#E1F5EE;color:#085041;border-color:#1D9E75;">scratch</span>
+      <span class="cls-pill" style="background:#FAEEDA;color:#633806;border-color:#BA7517;">crack</span>
+      <span class="cls-pill" style="background:#FBEAF0;color:#72243E;border-color:#D4537E;">glass shatter</span>
+      <span class="cls-pill" style="background:#FAECE7;color:#712B13;border-color:#D85A30;">lamp broken</span>
+      <span class="cls-pill" style="background:#F1EFE8;color:#444441;border-color:#888780;">tire flat</span>
+    </div>
+
+    <div class="edit-panel" id="edit-panel" style="display:none;">
+      <div style="font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">Edit detection</div>
+      <div class="edit-row">
+        <label>Class</label>
+        <select id="edit-cls" onchange="applyEdit()">
+          <option value="dent">dent</option>
+          <option value="scratch">scratch</option>
+          <option value="crack">crack</option>
+          <option value="glass_shatter">glass shatter</option>
+          <option value="lamp_broken">lamp broken</option>
+          <option value="tire_flat">tire flat</option>
+        </select>
+      </div>
+      <div class="edit-row">
+        <label>Part</label>
+        <select id="edit-part" onchange="applyEdit()">
+          <option>front_bumper</option><option>rear_bumper</option><option>hood</option>
+          <option>windshield</option><option>rear_windshield</option>
+          <option>front_left_door</option><option>front_right_door</option>
+          <option>rear_left_door</option><option>rear_right_door</option>
+          <option>left_fender</option><option>right_fender</option>
+          <option>trunk_lid</option><option>roof_panel</option>
+          <option>headlight</option><option>taillight</option><option>tire</option>
+        </select>
+      </div>
+      <div class="edit-row">
+        <label>Severity</label>
+        <select id="edit-sev" onchange="applyEdit()">
+          <option>minor</option><option>moderate</option><option>severe</option>
+        </select>
+      </div>
+      <div class="edit-row" style="margin-bottom:0;">
+        <label>Confidence</label>
+        <span class="conf-badge" id="edit-conf" style="background:var(--color-background-warning);color:var(--color-text-warning);">0.44 — low</span>
+        <span style="font-size:11px;color:var(--color-text-secondary);margin-left:4px;">YOLO score</span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div style="font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;">Part reference</div>
+    <div style="background:var(--color-background-secondary);border-radius:8px;padding:10px;border:0.5px solid var(--color-border-tertiary);">
+      <svg viewBox="0 0 220 130" width="100%" style="display:block;">
+        <rect x="30" y="30" width="160" height="75" rx="10" fill="none" stroke="var(--color-border-secondary)" stroke-width="1"/>
+        <rect x="55" y="15" width="110" height="40" rx="8" fill="none" stroke="var(--color-border-secondary)" stroke-width="1"/>
+        <rect x="30" y="85" width="40" height="25" rx="4" fill="none" stroke="var(--color-border-secondary)" stroke-width="0.8"/>
+        <rect x="150" y="85" width="40" height="25" rx="4" fill="none" stroke="var(--color-border-secondary)" stroke-width="0.8"/>
+        <circle cx="58" cy="115" r="12" fill="none" stroke="var(--color-border-secondary)" stroke-width="1.5"/>
+        <circle cx="162" cy="115" r="12" fill="none" stroke="var(--color-border-secondary)" stroke-width="1.5"/>
+        <circle cx="58" cy="115" r="6" fill="none" stroke="var(--color-border-secondary)" stroke-width="1"/>
+        <circle cx="162" cy="115" r="6" fill="none" stroke="var(--color-border-secondary)" stroke-width="1"/>
+        <rect x="32" y="32" width="22" height="14" rx="3" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.8"/>
+        <rect x="166" y="32" width="22" height="14" rx="3" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.8"/>
+        <rect x="85" y="17" width="50" height="16" rx="3" fill="#E1F5EE" stroke="#1D9E75" stroke-width="0.8"/>
+        <rect x="78" y="55" width="64" height="20" rx="3" fill="#FAEEDA" stroke="#BA7517" stroke-width="0.8"/>
+        <text x="43" y="41" text-anchor="middle" font-size="7" fill="#0C447C" font-weight="500">headlight</text>
+        <text x="177" y="41" text-anchor="middle" font-size="7" fill="#0C447C" font-weight="500">headlight</text>
+        <text x="110" y="28" text-anchor="middle" font-size="7" fill="#085041" font-weight="500">hood</text>
+        <text x="110" y="66" text-anchor="middle" font-size="7" fill="#633806" font-weight="500">front bumper</text>
+        <text x="75" y="78" text-anchor="middle" font-size="6.5" fill="#444441">L door</text>
+        <text x="145" y="78" text-anchor="middle" font-size="6.5" fill="#444441">R door</text>
+        <text x="40" y="100" text-anchor="middle" font-size="6" fill="#444441">L fender</text>
+        <text x="180" y="100" text-anchor="middle" font-size="6" fill="#444441">R fender</text>
+      </svg>
+    </div>
+
+    <div style="font-size:12px;font-weight:500;color:var(--color-text-secondary);margin:10px 0 6px;text-transform:uppercase;letter-spacing:0.05em;">Detections</div>
+    <div id="det-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+
+    <div style="margin-top:10px;padding:8px 10px;border-radius:6px;background:var(--color-background-warning);border:0.5px solid var(--color-border-warning);">
+      <div style="font-size:11px;font-weight:500;color:var(--color-text-warning);margin-bottom:2px;">Low confidence</div>
+      <div style="font-size:11px;color:var(--color-text-warning);">scratch at 0.44 — verify or reclassify</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CLASSES=['dent','scratch','crack','glass_shatter','lamp_broken','tire_flat'];
+const CLS_COLORS={dent:'#378ADD',scratch:'#1D9E75',crack:'#BA7517',glass_shatter:'#D4537E',lamp_broken:'#D85A30',tire_flat:'#888780'};
+const boxes={
+  b0:{cls:'dent',part:'front_bumper',sev:'moderate',conf:0.71,source:'yolo'},
+  b1:{cls:'scratch',part:'left_fender',sev:'minor',conf:0.44,source:'yolo'},
+  b2:{cls:'lamp_broken',part:'headlight',sev:'severe',conf:0.88,source:'yolo'}
+};
+let selBox=null, tool='select', drawing=false, drawStart={x:0,y:0};
+
+function renderList(){
+  const el=document.getElementById('det-list'); el.innerHTML='';
+  Object.entries(boxes).forEach(([id,b])=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary);cursor:pointer;font-size:12px;';
+    if(id===selBox) row.style.borderColor=CLS_COLORS[b.cls];
+    row.innerHTML=`<span style="width:8px;height:8px;border-radius:2px;background:${CLS_COLORS[b.cls]};flex-shrink:0;"></span><span style="flex:1;color:var(--color-text-primary);">${b.cls.replace('_',' ')}</span><span style="color:var(--color-text-secondary);">${b.part.replace(/_/g,' ')}</span><span style="color:${b.conf<0.5?'var(--color-text-warning)':'var(--color-text-secondary)'};margin-left:4px;">${b.conf.toFixed(2)}</span>`;
+    row.onclick=()=>selectBox(null,id);
+    el.appendChild(row);
+  });
+}
+
+function selectBox(e,id){
+  if(e) e.stopPropagation();
+  if(typeof id==='string'){
+    selBox=id;
+  } else if(e){
+    selBox=id;
+  }
+  document.querySelectorAll('.bbox').forEach(b=>b.classList.remove('selected'));
+  if(selBox && document.getElementById(selBox)){
+    document.getElementById(selBox).classList.add('selected');
+    openEdit(selBox,null);
+  }
+  renderList();
+}
+
+function openEdit(id,e){
+  if(e) e.stopPropagation();
+  selBox=id;
+  const b=boxes[id]; if(!b) return;
+  document.getElementById('edit-cls').value=b.cls;
+  document.getElementById('edit-part').value=b.part;
+  document.getElementById('edit-sev').value=b.sev;
+  const cb=document.getElementById('edit-conf');
+  cb.textContent=b.conf.toFixed(2)+(b.conf<0.5?' — low':b.conf<0.7?' — medium':' — high');
+  cb.style.background=b.conf<0.5?'var(--color-background-warning)':b.conf<0.7?'var(--color-background-secondary)':'var(--color-background-success)';
+  cb.style.color=b.conf<0.5?'var(--color-text-warning)':b.conf<0.7?'var(--color-text-secondary)':'var(--color-text-success)';
+  document.getElementById('edit-panel').style.display='block';
+  renderList();
+}
+
+function applyEdit(){
+  if(!selBox||!boxes[selBox]) return;
+  const b=boxes[selBox];
+  b.cls=document.getElementById('edit-cls').value;
+  b.part=document.getElementById('edit-part').value;
+  b.sev=document.getElementById('edit-sev').value;
+  const el=document.getElementById(selBox);
+  CLASSES.forEach(c=>el.classList.remove('cls-'+c));
+  el.classList.add('cls-'+b.cls);
+  el.querySelector('.bbox-label').textContent=b.cls+' · '+b.conf.toFixed(2);
+  renderList();
+}
+
+function deleteBox(id,e){
+  if(e) e.stopPropagation();
+  const el=document.getElementById(id); if(el) el.remove();
+  delete boxes[id];
+  if(selBox===id){selBox=null; document.getElementById('edit-panel').style.display='none';}
+  renderList();
+}
+
+function clearSel(){if(selBox) deleteBox(selBox,null);}
+
+function setTool(t){
+  tool=t;
+  document.getElementById('btn-select').classList.toggle('active',t==='select');
+  document.getElementById('btn-draw').classList.toggle('active',t==='draw');
+  document.getElementById('canvas').style.cursor=t==='draw'?'crosshair':'default';
+}
+
+function canvasDown(e){
+  if(tool!=='draw') return;
+  const r=e.currentTarget.getBoundingClientRect();
+  drawStart={x:e.clientX-r.left,y:e.clientY-r.top}; drawing=true;
+  const dr=document.getElementById('draw-rect');
+  dr.style.cssText=`display:block;position:absolute;border:1.5px dashed #fff;border-radius:2px;pointer-events:none;left:${drawStart.x}px;top:${drawStart.y}px;width:0;height:0;`;
+}
+
+function canvasMove(e){
+  if(!drawing) return;
+  const r=e.currentTarget.getBoundingClientRect();
+  const cx=e.clientX-r.left, cy=e.clientY-r.top;
+  const dr=document.getElementById('draw-rect');
+  dr.style.left=Math.min(cx,drawStart.x)+'px'; dr.style.top=Math.min(cy,drawStart.y)+'px';
+  dr.style.width=Math.abs(cx-drawStart.x)+'px'; dr.style.height=Math.abs(cy-drawStart.y)+'px';
+}
+
+function canvasUp(e){
+  if(!drawing) return; drawing=false;
+  const dr=document.getElementById('draw-rect');
+  const w=parseInt(dr.style.width), h=parseInt(dr.style.height);
+  if(w<20||h<20){dr.style.display='none';return;}
+  const canvas=document.getElementById('canvas');
+  const cw=canvas.offsetWidth, ch=canvas.offsetHeight;
+  const newId='b'+Date.now();
+  const newCls='dent';
+  boxes[newId]={cls:newCls,part:'front_bumper',sev:'moderate',conf:1.0,source:'human'};
+  const bbox=document.createElement('div');
+  bbox.id=newId; bbox.className='bbox cls-'+newCls;
+  bbox.style.cssText=`left:${dr.style.left};top:${dr.style.top};width:${dr.style.width};height:${dr.style.height};`;
+  bbox.innerHTML=`<div class="bbox-label" onclick="openEdit('${newId}',event)">${newCls} · new</div><div class="bbox-del" onclick="deleteBox('${newId}',event)">×</div><div class="bbox-handle" onmousedown="startResize(event,'${newId}')"></div>`;
+  bbox.onclick=function(ev){selectBox(ev,newId);};
+  canvas.appendChild(bbox);
+  dr.style.display='none';
+  selectBox(null,newId); openEdit(newId,null);
+  renderList(); setTool('select');
+}
+
+function startResize(e,id){
+  e.stopPropagation(); e.preventDefault();
+  const el=document.getElementById(id);
+  const startX=e.clientX, startY=e.clientY;
+  const startW=el.offsetWidth, startH=el.offsetHeight;
+  function onMove(ev){
+    el.style.width=Math.max(30,startW+(ev.clientX-startX))+'px';
+    el.style.height=Math.max(20,startH+(ev.clientY-startY))+'px';
+  }
+  function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+}
+
+renderList();
+selectBox(null,'b0');
+</script>

@@ -81,3 +81,18 @@ uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 streamlit run dashboard/app.py
 ```
 *Access your interactive claims dashboard at `http://localhost:8501`.*
+
+---
+
+## How to Run (Current Architecture)
+
+```bash
+# Terminal 1 — Start backend
+uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
+
+# Terminal 2 — Start dashboard
+streamlit run dashboard/app.py --server.port 8501
+
+# Open browser
+# http://localhost:8501
+```

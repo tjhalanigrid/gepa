@@ -1,0 +1,38 @@
+{
+  "trajectory_id": "9db0538beae3439fa1296806f9835e23",
+  "image_path": "/Users/emaheshwari/Desktop/veh_dmg_detection/data/uploads/fd6b642cf4ea4327888951509504c28d.jpg",
+  "image_width": 1000,
+  "image_height": 664,
+  "created_at": "2026-06-03T13:32:45.760984+00:00",
+  "model_id": "Qwen/Qwen2-VL-7B-Instruct",
+  "steps": [],
+  "final_damage_map": [
+    {
+      "damage": "lamp broken",
+      "part": "hood",
+      "severity": "moderate",
+      "cost_min": 3000,
+      "cost_max": 8000
+    },
+    {
+      "damage": "dent",
+      "part": "front_left_door",
+      "severity": "moderate",
+      "cost_min": 10000,
+      "cost_max": 30000
+    },
+    {
+      "damage": "scratch",
+      "part": "front_left_door",
+      "severity": "moderate",
+      "cost_min": 3500,
+      "cost_max": 9000
+    }
+  ],
+  "total_min": 16500,
+  "total_max": 47000,
+  "total_elapsed_s": 125.87,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

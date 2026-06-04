@@ -1,0 +1,16 @@
+{
+  "trajectory_id": "628a6fd9867f4f1c94583e500813f6c2",
+  "image_path": "/Users/emaheshwari/Desktop/veh_dmg_detection/data/uploads/89332f184cc24710a49afa35df7a5abf.jpg",
+  "image_width": 1000,
+  "image_height": 667,
+  "created_at": "2026-06-03T10:51:35.665181+00:00",
+  "model_id": "Qwen/Qwen2-VL-7B-Instruct",
+  "steps": [],
+  "final_damage_map": [],
+  "total_min": 0,
+  "total_max": 0,
+  "total_elapsed_s": 157.5,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}
