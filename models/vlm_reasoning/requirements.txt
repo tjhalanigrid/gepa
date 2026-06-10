@@ -1,3 +1,6 @@
 # VLM Reasoning Dependencies
 ollama>=0.1.7
 pillow>=10.0.0
+# CodeAct cost-computation sandbox engine (secure Rust Python interpreter).
+# Optional: the sandbox falls back to a restricted exec() engine if absent.
+pydantic-monty>=0.0.18

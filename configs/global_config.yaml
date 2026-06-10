@@ -1,14 +1,15 @@
 vlm:
-  model_id: "Qwen/Qwen2-VL-7B-Instruct"
+  model_id: "Qwen/Qwen2.5-VL-3B-Instruct"   # 3B for fast MPS inference; use 7B on GPU host
   device: "mps"                        # Apple Silicon MPS; change to "cuda" on GPU host
-  max_new_tokens_tool: 120
-  max_new_tokens_final: 160
+  max_new_tokens_tool: 512
+  max_new_tokens_final: 1024
   temperature: 0.1
   do_sample: false
-  max_iterations: 2
+  max_iterations: 6
   codeact_max_retries: 2
   codeact_min_confidence: 0.70
   image_max_dim: 640
+  sandbox_engine: "monty"               # "monty" (secure Rust interpreter) or "exec"
 
 approval:
   auto_approve_threshold_inr: 50000

@@ -281,24 +281,31 @@ is better than a 500 error.
 
 ### CodeAct Sandbox — `sandbox.py`
 
-The VLM generates Python. This code runs in a restricted exec namespace.
+The VLM generates Python to compute repair cost. Two execution engines exist,
+selected by `vlm.sandbox_engine` in `global_config.yaml`:
 
-**Allowed builtins:** `abs`, `min`, `max`, `sum`, `round`, `len`, `range`,
-`int`, `float`, `str`, `list`, `dict`, `zip`, `enumerate`
+- **`monty`** (default) — `pydantic-monty`, a minimal secure Python interpreter
+  written in Rust. Filesystem / network / env access are blocked by default;
+  `COST_DB` is injected as a read-only input. Monty returns the value of the
+  final expression, so it accepts both `result = {...}` (we append a trailing
+  `result`) and a final bare dict expression. Optional dependency — if not
+  installed, `execute_sandboxed()` falls back to `exec`.
+- **`exec`** — restricted CPython `exec()` namespace (the original engine).
+  Allowed builtins: `abs`, `min`, `max`, `sum`, `round`, `len`, `range`, `int`,
+  `float`, `str`, `list`, `dict`, `zip`, `enumerate`. Allowed imports: `math`,
+  `json`, `statistics`, `decimal`. Blocked: `open`, `exec`, `eval`,
+  `__import__`, `compile`, `getattr`, `setattr`, dunder access, any non-whitelist
+  import. Timeout: 10s via a daemon-thread `join()` (not `signal.alarm()`, which
+  cannot fire in the threadpool worker).
 
-**Allowed imports:** `math`, `json`, `statistics`, `decimal`
+**Output contract (both engines):** the produced value MUST be a dict with keys
+`damage_part_map`, `total_min`, `total_max`, `currency`. A bare price table or
+any other shape is rejected — the model cannot bypass `COST_DB` by returning
+arbitrary data. On failure: `{"error": "..."}`.
 
-**Blocked:** `open`, `exec`, `eval`, `__import__`, `compile`, `getattr`,
-`setattr`, any import not in the whitelist
-
-**Timeout:** 10 seconds via `signal.alarm()`. Hard kill.
-
-**Required:** generated code must set `result` as a `dict`. If it does not,
-return `{"error": "Code executed but did not set 'result' variable"}`.
-
-Do not relax sandbox restrictions for any reason during MVP. If the VLM
-cannot produce valid code within the sandbox constraints, fix the system
-prompt, not the sandbox.
+If the VLM cannot produce valid code, fix the system prompt first (a worked
+`result = ...` template lives in `CODEACT_SYSTEM_PROMPT`). Do not weaken the
+output-contract validation — that is what keeps pricing anchored to `COST_DB`.
 
 ### COST_DB
 

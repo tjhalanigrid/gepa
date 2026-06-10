@@ -1,0 +1,75 @@
+{
+  "trajectory_id": "b31d3cabeffb4becbdb1205e0561e2d7",
+  "image_path": "/Users/khirawat/Documents/GitHub/veh_dmg_detection/data/uploads/a32601be256e4d439ff4abbb5af10e4c.jpg",
+  "image_width": 600,
+  "image_height": 401,
+  "created_at": "2026-06-04T16:34:41.994949+00:00",
+  "model_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "confidence_threshold": 0.15,
+          "reason": "locate major damages"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Detected 1 damage region(s): 1x dent",
+      "observation_image_path": "data/uploads/yolo_annotated/a32601be256e4d439ff4abbb5af10e4c_yolo_0d6048.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.52
+    },
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            150,
+            127,
+            300,
+            280
+          ],
+          "reason": "inspect large dent on front left side"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [150, 127, 300, 280]",
+      "observation_image_path": "/tmp/zoom_6b3c1681.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.01
+    },
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "detect_part",
+        "arguments": {
+          "part_query": "headlight",
+          "reason": "identify broken headlight"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Detected part: headlight",
+      "observation_image_path": "/tmp/detect_fallback_023bd1c1.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.05
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "dent",
+      "part": "hood",
+      "severity": "moderate",
+      "cost_min": 12000,
+      "cost_max": 35000
+    }
+  ],
+  "total_min": 12000,
+  "total_max": 35000,
+  "total_elapsed_s": 150.28,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

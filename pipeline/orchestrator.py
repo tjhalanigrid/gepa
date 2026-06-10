@@ -1,27 +1,24 @@
 """
 pipeline/orchestrator.py
 
-The central entry point for the Thinking with Images pipeline.
+Central entry point for the Vehicle Damage Assessment pipeline.
 
-Architecture:
-  - Qwen2-VL-7B-Instruct receives the raw image first
-  - VLM uses native multimodal vision to form a damage hypothesis
-  - VLM calls CV tools (damage_detection, part_segmentation) as needed
-  - VLM generates Python cost computation code
-  - Code runs in sandbox.py
-  - VLM synthesizes FinalDamageReport JSON
+Architecture (VLM-only, Ollama backend):
+  - PiAgent drives a recursive CodeAct loop using qwen3.5:9b via Ollama
+  - The VLM is the sole perception model: it sees images and calls tools
+  - Tools: run_damage_detection, zoom_region, detect_part, segment_damage,
+           estimate_depth, execute_cost_computation, Terminate
+  - All VLM calls are HTTP POST to localhost:11434 (Ollama)
+  - Cost computation runs in the Monty sandbox (sandbox.py)
+  - No YOLO / SAM2 / GroundingDINO in the reasoning hot-path
+  - YOLO kept as a silent safety-net fallback only
 
 This module owns:
-  - VLM model loading (lazy singleton, thread-safe)
-  - The tool-calling agentic loop
-  - Tool call JSON parsing from Qwen2-VL response format
+  - Ollama health-check gate
+  - Delegating Stage 1 to PiAgent (models/vlm_reasoning/pi_agent.py)
   - Auto-approve threshold gate
   - FinalDamageReport construction
-
-This module does NOT own:
-  - Individual model inference (delegated to tool_registry.py)
-  - Sandboxed execution (delegated to sandbox.py)
-  - Multi-turn context management (delegated to context_manager.py)
+  - Trajectory saving
 """
 
 import gc
@@ -41,7 +38,6 @@ import torch
 import yaml
 from PIL import Image
 
-from models.vlm_reasoning.tool_registry import TOOL_DEFINITIONS, get_tool_executor
 from pipeline.schema import FinalDamageReport, DamagePartEntry, ToolCallRecord, DetectionWithBBox
 
 logger = logging.getLogger(__name__)
@@ -58,11 +54,10 @@ def _vlm_timeout(seconds: int):
     yield
 
 
-# ── Module-level singletons ──────────────────────────────────────────────────
-_model = None
-_processor = None
-_tool_executor = None
-_model_lock = threading.Lock()
+# ── Ollama health gate ───────────────────────────────────────────────────────
+# _model / _processor removed — model is served by Ollama, not loaded in-process.
+# _load_models() is kept for API compatibility (called by backend/app.py on startup)
+# but now only performs an Ollama health check.
 
 # ── System prompt ────────────────────────────────────────────────────────────
 # Update in CLAUDE.md when this changes so changes are tracked.
@@ -150,47 +145,75 @@ Respond with ONLY a valid JSON object. No markdown. No explanation. No preamble.
 If no damage is visible respond with: {"damage_items": []}"""
 
 
-CODEACT_SYSTEM_PROMPT = """You are a vehicle damage assessment agent.
+CODEACT_SYSTEM_PROMPT = """You are a vehicle damage assessment agent that thinks with images.
+
+You are given the raw vehicle photo first. You decide which computer vision tools
+to call, you look at the images they return, and you reason step by step until you
+can produce a final, costed damage assessment.
 
 ═══════════════════════════════════════════════════
 YOUR OUTPUT FORMAT — MANDATORY, NO EXCEPTIONS
 ═══════════════════════════════════════════════════
-Every single response MUST be this exact JSON structure.
-Do NOT output anything else. No explanations. No markdown.
-No detection lists. Just this JSON object:
+Every single response MUST be exactly one JSON object with this structure.
+Do NOT output anything else. No explanations outside "thought". No markdown.
 
 {
-  "thought": "your reasoning here",
-  "uncertainty": [],
+  "thought": "what you see and what you will do next",
+  "uncertainty": ["open questions, empty list if none"],
   "actions": [
-    {"name": "TOOL_NAME", "arguments": {}}
-  ]
+    {"name": "TOOL_NAME", "arguments": {...}}
+  ],
+  "confidence": 0.0
 }
-
-To terminate: use Terminate as the tool name.
-To zoom in:   use zoom_region as the tool name.
-To find part: use detect_part as the tool name.
-To segment:   use segment_damage as the tool name.
 ═══════════════════════════════════════════════════
 
-CONTEXT:
-The YOLOv8 model has ALREADY run. Detections are shown to you.
-Do NOT re-output the detection data. Use it to reason.
+TOOLS YOU CAN CALL (one or more per turn):
+  • run_damage_detection — runs trained YOLOv8, returns an annotated image with
+        bounding boxes + a structured detection list. Call this early to locate
+        damage. arguments: {"confidence_threshold": 0.15, "reason": "..."}
+  • zoom_region — crop + magnify a region to inspect it closely.
+        arguments: {"bbox": [x1,y1,x2,y2], "reason": "..."}
+  • detect_part — highlight a specific vehicle part you are unsure about.
+        arguments: {"part_query": "left headlight", "reason": "..."}
+  • segment_damage — precise SAM2 mask over a damage region to judge severity.
+        arguments: {"bbox": [x1,y1,x2,y2], "reason": "..."}
+  • execute_cost_computation — run Python in a sandbox to compute repair cost.
+        Your code has COST_DB[damage_class][part_label] = (cost_min, cost_max).
+        For pairs not in COST_DB use (3000, 8000). You MUST write real Python that
+        reads COST_DB and assigns a dict to `result`. Do NOT paste a price table.
+        `result` keys: damage_part_map (list of {damage, part, severity, cost_min,
+        cost_max}), total_min (int), total_max (int), currency ("INR").
+        Copy this template and edit only the `items` list:
+            items = [{"damage": "dent", "part": "front bumper", "severity": "severe"}]
+            result = {"damage_part_map": [], "total_min": 0, "total_max": 0, "currency": "INR"}
+            for d in items:
+                lo, hi = COST_DB.get(d["damage"], {}).get(d["part"], (3000, 8000))
+                result["damage_part_map"].append({**d, "cost_min": lo, "cost_max": hi})
+                result["total_min"] += lo
+                result["total_max"] += hi
+        arguments: {"code": "<the python above, as a single string>"}
+  • Terminate — finish and return the final damage list.
+        arguments: {"damage_items": [{damage_type, part, severity, confidence}]}
 
-YOUR TASKS:
-1. Look at the YOLO detections already provided
-2. Verify each detection (class + part) is correct
-3. For detections below confidence 0.50, call zoom_region
-4. Assign severity: minor/moderate/severe
-5. Call Terminate with final damage list
+RECOMMENDED WORKFLOW (THINKING WITH IMAGES):
+1. Examine the raw image. Form an initial hypothesis in "thought".
+2. Call run_damage_detection to locate damage precisely. Read the returned image
+   and detection list.
+3. For any region you cannot classify confidently (confidence < 0.50) or whose
+   severity is unclear, call zoom_region or segment_damage and look again.
+4. If you are unsure which part is affected, call detect_part.
+5. YOLO is weak on dent/scratch/crack — if you visually see damage YOLO missed,
+   include it anyway and note it in "uncertainty".
+6. Once you know every (damage, part, severity), call execute_cost_computation to
+   price it. Read the returned cost result.
+7. Call Terminate with your final verified damage_items.
 
 TERMINATION FORMAT:
 {
-  "thought": "Assessment complete",
+  "thought": "Assessment complete. Costs computed.",
   "uncertainty": [],
   "actions": [{"name": "Terminate", "arguments": {"damage_items": [
-    {"damage_type": "dent", "part": "front_bumper",
-     "severity": "severe", "confidence": 0.91}
+    {"damage_type": "dent", "part": "front_bumper", "severity": "severe", "confidence": 0.91}
   ]}}],
   "confidence": 0.91
 }
@@ -201,8 +224,8 @@ Valid part: front_bumper rear_bumper hood windshield rear_windshield
   left_fender right_fender trunk_lid roof_panel headlight taillight tire
 Valid severity: minor moderate severe
 
-NEVER output anything outside the JSON object. No markdown. No preamble.
-Do NOT call run_damage_detection — YOLO has already run."""
+Be conservative with severity. Only call tools you actually need.
+NEVER output anything outside the single JSON object. No markdown. No preamble."""
 
 CODEACT_TOOL_DEFINITIONS = [
     {
@@ -311,6 +334,27 @@ VALID_PARTS = {
     "headlight", "taillight", "tire"
 }
 VALID_SEVERITY = {"minor", "moderate", "severe"}
+
+# Canonical tool names the CodeAct loop accepts. Small VLMs frequently emit
+# casing/spacing variants (e.g. "terminate", "Run Damage Detection") — normalise
+# them so a correct action is not rejected purely on formatting.
+_CANONICAL_TOOLS = {
+    "run_damage_detection",
+    "zoom_region",
+    "detect_part",
+    "segment_damage",
+    "execute_cost_computation",
+    "Terminate",
+}
+_CANONICAL_TOOL_LOOKUP = {t.lower().replace(" ", "_"): t for t in _CANONICAL_TOOLS}
+
+
+def _canonicalize_action_names(turn) -> None:
+    """Rewrite each action.name to its canonical form in place (case/space-insensitive)."""
+    for action in turn.actions:
+        key = (action.name or "").strip().lower().replace(" ", "_")
+        if key in _CANONICAL_TOOL_LOOKUP:
+            action.name = _CANONICAL_TOOL_LOOKUP[key]
 
 
 def _bbox_to_part(bbox: list, img_w: int, img_h: int) -> str:
@@ -499,6 +543,33 @@ def _merge_damage_sources(
     return sorted(merged.values(), key=lambda x: x["confidence"], reverse=True)
 
 
+def _load_models(config: dict) -> None:
+    """
+    Formerly loaded HuggingFace Qwen2-VL weights into GPU/MPS RAM.
+
+    Now replaced by an Ollama health check — the model is served by the
+    Ollama process (localhost:11434) and does NOT need to be loaded in-process.
+
+    Function name kept for backward compatibility with backend/app.py startup
+    which calls _load_models(config) on /health warm-up.
+
+    Raises RuntimeError if Ollama is unreachable or the configured model is absent.
+    """
+    from models.vlm_reasoning.ollama_client import check_health
+
+    vlm_cfg  = config.get("vlm", {})
+    base_url = vlm_cfg.get("ollama_base_url", "http://localhost:11434")
+    model    = vlm_cfg.get("model_id", "qwen3.5:9b")
+
+    logger.info(f"Checking Ollama: model='{model}' at {base_url}")
+    if not check_health(base_url, model):
+        raise RuntimeError(
+            f"Ollama is not running or model '{model}' is not available at {base_url}. "
+            f"Start Ollama with: ollama serve | Then pull model with: ollama pull {model}"
+        )
+    logger.info(f"Ollama ready: {model} @ {base_url}")
+
+
 def _apply_cost_lookup(damage_items: list) -> list:
     """
     Applies COST_DB pricing to each damage item.
@@ -519,61 +590,8 @@ def _apply_cost_lookup(damage_items: list) -> list:
     return result
 
 
-def _load_models(config: dict) -> None:
-    """
-    Lazy-load Qwen2-VL-7B-Instruct. Thread-safe via _model_lock.
-    Called on first request and on /health startup warmup.
-    """
-    global _model, _processor, _tool_executor
 
-    if _model is not None and _processor is not None:
-        return
 
-    with _model_lock:
-        if _model is not None and _processor is not None:
-            return
-
-        vlm_cfg = config.get("vlm", {})
-        model_id = vlm_cfg.get("model_id", "Qwen/Qwen2-VL-7B-Instruct")
-        device = vlm_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-        if device == "mps" and not torch.backends.mps.is_available():
-            logger.warning(
-                "MPS requested but not available. Falling back to CPU. "
-                "Inference will be significantly slower."
-            )
-            device = "cpu"
-
-        logger.info(f"Loading VLM: {model_id} on {device} ...")
-        t0 = time.time()
-
-        try:
-            from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
-            from qwen_vl_utils import process_vision_info
-
-            _processor = AutoProcessor.from_pretrained(
-                model_id,
-                trust_remote_code=True
-            )
-            _model = Qwen2VLForConditionalGeneration.from_pretrained(
-                model_id,
-                dtype=torch.bfloat16,
-                device_map=None,
-                trust_remote_code=True
-            )
-            _model = _model.to(device)
-            _model.eval()
-
-        except Exception as e:
-            logger.error(f"Failed to load VLM {model_id}: {e}")
-            raise RuntimeError(f"VLM load failed: {e}") from e
-
-        _tool_executor = get_tool_executor(config)
-
-        elapsed = round(time.time() - t0, 1)
-        logger.info(f"VLM loaded in {elapsed}s. Device: {device}")
-        if torch.backends.mps.is_available():
-            allocated = round(torch.mps.driver_allocated_memory() / 1e9, 2)
-            logger.info(f"MPS memory after model load: {allocated}GB")
 
 
 def _preprocess_image(image_path: str) -> str:
@@ -612,95 +630,11 @@ def _preprocess_image(image_path: str) -> str:
     return image_path
 
 
-# DEPRECATED — no longer called by run(). Kept for reference.
-def _run_cv_tools_eagerly(
-    image_path: str,
-    config: dict,
-) -> Tuple[dict, dict, List[ToolCallRecord], List[str]]:
-    """
-    Run damage detection and part segmentation before the VLM loop.
-
-    Returns:
-        (damage_result, seg_result, tool_call_log, warnings)
-    Both results are raw dicts from the tool dispatcher.
-    Failures return {"error": ...} — never raises.
-    """
-    tool_call_log: List[ToolCallRecord] = []
-    warnings: List[str] = []
-
-    for tool_name in ("run_damage_detection", "run_part_segmentation"):
-        logger.info(f"Pre-running CV tool: {tool_name}")
-        t0 = time.time()
-        result = _tool_executor(tool_name, {"image_path": image_path})
-        elapsed = round(time.time() - t0, 3)
-
-        tool_call_log.append(ToolCallRecord(
-            tool=tool_name,
-            args_summary=f"image_path={Path(image_path).name}",
-            elapsed_s=elapsed,
-            result_keys=list(result.keys()) if isinstance(result, dict) else [],
-            success="error" not in result
-        ))
-
-        if "error" in result:
-            warn = f"CV tool '{tool_name}' error: {result['error']}"
-            logger.warning(warn)
-            warnings.append(warn)
-
-        if tool_name == "run_damage_detection":
-            damage_result = result
-        else:
-            seg_result = result
-
-    return damage_result, seg_result, tool_call_log, warnings
-
-
-# DEPRECATED — no longer called by run(). Kept for reference.
-def _build_initial_messages(
-    image_path: str,
-    claim_metadata: Optional[dict],
-    damage_result: dict,
-    seg_result: dict,
-) -> list:
-    """Construct the first user message with image, CV results, and claim context."""
-    meta_text = (
-        f"Claim metadata: {json.dumps(claim_metadata, indent=2)}"
-        if claim_metadata
-        else "No claim metadata provided."
-    )
-
-    damage_json = json.dumps(damage_result, indent=2, default=str)
-    seg_json = json.dumps(seg_result, indent=2, default=str)
-
-    return [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "image": f"file://{Path(image_path).resolve()}"
-                },
-                {
-                    "type": "text",
-                    "text": (
-                        f"{meta_text}\n\n"
-                        f"DAMAGE_DETECTIONS (from YOLOv8):\n{damage_json}\n\n"
-                        f"PART_SEGMENTS (from Grounding DINO + SAM2):\n{seg_json}\n\n"
-                        f"Now cross-reference the bboxes, assign each damage to a part, "
-                        f"call execute_cost_computation, and return the final JSON report."
-                    )
-                }
-            ]
-        }
-    ]
-
-
 def _call_vlm(
     messages: list,
     config: dict,
     is_final_turn: bool = False,
-    tools=TOOL_DEFINITIONS,
+    tools=None,
     max_new_tokens: Optional[int] = None,
 ) -> str:
     """
@@ -739,6 +673,19 @@ def _call_vlm(
     )
     inputs = {k: v.to(_model.device) for k, v in inputs.items()}
 
+    n_prompt_tokens = int(inputs["input_ids"].shape[1])
+    n_images = len(image_inputs) if image_inputs else 0
+    device = str(_model.device)
+    logger.info(
+        f"VLM.generate START | device={device} | prompt_tokens={n_prompt_tokens} "
+        f"| images={n_images} | max_new_tokens={max_tokens} "
+        f"(this can take a while on MPS/CPU)"
+    )
+    t_gen = time.time()
+
+    # NOTE: _vlm_timeout() uses signal.alarm(), which only fires on the main
+    # thread. Background job workers are NOT the main thread, so this guard is a
+    # best-effort no-op there; the backend's own hard job timeout is the real cap.
     with torch.inference_mode():
         with _vlm_timeout(90):
             output_ids = _model.generate(
@@ -749,7 +696,18 @@ def _call_vlm(
             )
 
     new_tokens = output_ids[0][inputs["input_ids"].shape[1]:]
-    result = _processor.decode(new_tokens, skip_special_tokens=False)
+    n_new = int(new_tokens.shape[0])
+    gen_s = time.time() - t_gen
+    tok_per_s = (n_new / gen_s) if gen_s > 0 else 0.0
+    logger.info(
+        f"VLM.generate DONE  | new_tokens={n_new} | elapsed={gen_s:.1f}s "
+        f"| {tok_per_s:.2f} tok/s"
+    )
+
+    # skip_special_tokens=True prevents <|im_end|>/<|endoftext|> leaking into the
+    # parsed CodeAct JSON (regression noted in architecture_verification.md).
+    result = _processor.decode(new_tokens, skip_special_tokens=True)
+    logger.debug(f"VLM raw output: {result[:300]}")
 
     del inputs, output_ids, new_tokens
     gc.collect()
@@ -758,254 +716,6 @@ def _call_vlm(
         torch.mps.synchronize()
 
     return result
-
-
-# DEPRECATED — no longer called by run(). Kept for reference.
-def _extract_tool_call(response_text: str) -> Optional[dict]:
-    """
-    Parse a tool call from Qwen2-VL response text.
-
-    Qwen2-VL wraps tool calls in <tool_call>...</tool_call> tags.
-    Falls back to raw JSON detection if tags are absent.
-
-    Returns:
-        dict with 'name' and 'arguments' keys, or None if no tool call found
-    """
-    # Primary: tag-based extraction (Qwen2-VL native format)
-    tag_pattern = r"<tool_call>(.*?)</tool_call>"
-    match = re.search(tag_pattern, response_text, re.DOTALL)
-
-    if match:
-        raw = match.group(1).strip()
-    else:
-        # Fallback: look for a raw JSON object that looks like a tool call
-        json_pattern = r'\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:.*?\}'
-        match = re.search(json_pattern, response_text, re.DOTALL)
-        if not match:
-            return None
-        raw = match.group(0)
-
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as e:
-        logger.warning(f"Tool call JSON parse failed: {e}. Raw: {raw[:200]}")
-        return None
-
-    if "name" not in parsed:
-        logger.warning(f"Tool call JSON missing 'name' key: {parsed}")
-        return None
-
-    # Normalise arguments — sometimes returned as a JSON string instead of dict
-    args = parsed.get("arguments", {})
-    if isinstance(args, str):
-        try:
-            args = json.loads(args)
-        except json.JSONDecodeError:
-            logger.warning(f"Could not parse tool arguments as JSON: {args[:200]}")
-            args = {}
-    parsed["arguments"] = args
-
-    return parsed
-
-
-# DEPRECATED — no longer called by run(). Kept for reference.
-def _extract_final_report(messages: list) -> dict:
-    """
-    Extract the structured JSON report from the last assistant message.
-
-    Tries:
-    1. ```json ... ``` fenced block
-    2. Raw JSON object in response text
-    3. Returns raw text under 'raw_vlm_response' if neither works
-    """
-    for msg in reversed(messages):
-        if msg.get("role") != "assistant":
-            continue
-        content = msg.get("content", "")
-        if not isinstance(content, str):
-            continue
-
-        # Try fenced JSON block
-        fenced = re.search(r"```json\s*(.*?)```", content, re.DOTALL)
-        if fenced:
-            try:
-                return json.loads(fenced.group(1).strip())
-            except json.JSONDecodeError:
-                pass
-
-        # Try raw JSON object
-        raw_json = re.search(r"\{.*\}", content, re.DOTALL)
-        if raw_json:
-            try:
-                return json.loads(raw_json.group(0))
-            except json.JSONDecodeError:
-                pass
-
-        # Give up — return raw text for debugging
-        return {"raw_vlm_response": content}
-
-    return {"error": "No assistant message found in conversation history"}
-
-
-# DEPRECATED — no longer called by run(). Kept for reference.
-def _run_tool_loop(
-    messages: list,
-    config: dict,
-) -> Tuple[list, List[ToolCallRecord], List[str]]:
-    """
-    Agentic tool-calling loop.
-
-    Continues until:
-    - VLM produces a response with no tool call (final answer)
-    - max_iterations is reached (logged as warning)
-
-    Returns:
-        (final_messages, tool_call_log, warnings)
-    """
-    vlm_cfg = config.get("vlm", {})
-    max_iterations = vlm_cfg.get("max_iterations", 6)
-    tool_call_log: List[ToolCallRecord] = []
-    warnings: List[str] = []
-    t_loop_start = time.time()
-
-    for iteration in range(max_iterations):
-        logger.info(f"Orchestrator loop — iteration {iteration + 1}/{max_iterations}")
-
-        # Check total elapsed time and abort if over limit
-        loop_elapsed = time.time() - t_loop_start
-        if loop_elapsed > 540:  # 9 minutes hard cap for entire loop
-            warnings.append(f"Tool loop aborted: exceeded 540s time limit at iteration {iteration + 1}")
-            logger.warning(f"Tool loop timeout at iteration {iteration + 1} after {loop_elapsed:.0f}s")
-            break
-
-        is_final = (iteration == max_iterations - 1)
-        t0 = time.time()
-
-        try:
-            response_text = _call_vlm(messages, config, is_final_turn=is_final)
-        except VLMGenerationTimeout as e:
-            warnings.append(f"VLM generate() timed out on iteration {iteration + 1}: {e}")
-            logger.error(f"VLM generate() timed out: {e}")
-            break
-        vlm_elapsed = round(time.time() - t0, 2)
-        logger.debug(f"VLM response ({vlm_elapsed}s): {response_text[:300]}...")
-
-        tool_call = _extract_tool_call(response_text)
-
-        if tool_call is None:
-            # No tool call — VLM produced final answer
-            messages.append({"role": "assistant", "content": response_text})
-            logger.info(f"VLM produced final answer at iteration {iteration + 1}")
-            break
-
-        # Tool call found — dispatch it
-        tool_name = tool_call["name"]
-        tool_args = tool_call["arguments"]
-        image_arg = tool_args.get("image_path", "")
-
-        logger.info(f"VLM calls tool: {tool_name}")
-        t1 = time.time()
-        tool_result = _tool_executor(tool_name, tool_args)
-        tool_elapsed = round(time.time() - t1, 3)
-
-        # Record the call
-        tool_call_log.append(ToolCallRecord(
-            tool=tool_name,
-            args_summary=(
-                f"image_path={Path(image_arg).name}"
-                if image_arg
-                else str(list(tool_args.keys()))
-            ),
-            elapsed_s=tool_elapsed,
-            result_keys=list(tool_result.keys()) if isinstance(tool_result, dict) else [],
-            success="error" not in tool_result
-        ))
-
-        if "error" in tool_result:
-            warn_msg = f"Tool '{tool_name}' returned error: {tool_result['error']}"
-            logger.warning(warn_msg)
-            warnings.append(warn_msg)
-
-        # Append assistant tool call message and tool result to history
-        messages.append({"role": "assistant", "content": response_text})
-        messages.append({
-            "role": "tool",
-            "name": tool_name,
-            "content": json.dumps(tool_result, default=str)
-        })
-
-    else:
-        warn = f"Tool-calling loop reached max_iterations={max_iterations} without final answer"
-        logger.warning(warn)
-        warnings.append(warn)
-
-    return messages, tool_call_log, warnings
-
-
-# DEPRECATED — no longer called by run(). Kept for reference.
-def _build_final_report(
-    raw_report: dict,
-    image_path: str,
-    tool_call_log: List[ToolCallRecord],
-    warnings: List[str],
-    total_elapsed: float,
-    approval_threshold: int,
-    last_assistant_message: str,
-    config: dict
-) -> FinalDamageReport:
-    """
-    Validate and construct FinalDamageReport from VLM raw output.
-    Handles missing keys gracefully — never raises.
-    """
-    raw_map = raw_report.get("damage_part_map", [])
-    damage_part_map = []
-
-    for entry in raw_map:
-        try:
-            damage_part_map.append(DamagePartEntry(
-                damage=str(entry.get("damage", "unknown")),
-                part=str(entry.get("part", "unknown")),
-                severity=str(entry.get("severity", "minor")),
-                cost_min=int(entry.get("cost_min", 0)),
-                cost_max=int(entry.get("cost_max", 0)),
-            ))
-        except Exception as e:
-            warnings.append(f"Skipped malformed damage_part_map entry: {entry}. Error: {e}")
-
-    total_min = int(raw_report.get("total_min", sum(e.cost_min for e in damage_part_map)))
-    total_max = int(raw_report.get("total_max", sum(e.cost_max for e in damage_part_map)))
-
-    # Merge warnings from VLM response into our warnings list
-    vlm_warnings = raw_report.get("warnings", [])
-    if isinstance(vlm_warnings, list):
-        warnings.extend([str(w) for w in vlm_warnings])
-
-    # Auto-approve gate
-    if not damage_part_map:
-        approval_decision = "UNKNOWN"
-        warnings.append("No damage-part mappings found — cannot compute approval decision")
-    elif total_max < approval_threshold:
-        approval_decision = "AUTO_APPROVED"
-    else:
-        approval_decision = "ESCALATE_TO_HUMAN"
-
-    logger.info(
-        f"Report built: {len(damage_part_map)} damage entries, "
-        f"total INR {total_min}–{total_max}, decision={approval_decision}"
-    )
-
-    return FinalDamageReport(
-        image_path=image_path,
-        damage_part_map=damage_part_map,
-        total_min=total_min,
-        total_max=total_max,
-        currency=raw_report.get("currency", "INR"),
-        approval_decision=approval_decision,
-        tool_call_log=tool_call_log,
-        total_inference_s=total_elapsed,
-        warnings=list(dict.fromkeys(warnings)),   # deduplicate, preserve order
-        raw_vlm_response=last_assistant_message
-    )
 
 
 def _extract_json_objects(text: str) -> list:
@@ -1134,12 +844,17 @@ def _enforce_turn_policy(
     is_terminate = any(a.name == "Terminate" for a in actions)
 
     if is_terminate:
-        if tool_calls_made == 0 and iteration == 0:
-            return False, (
-                "You must call at least one vision tool before terminating. "
-                "Call zoom_region, detect_part, or segment_damage first."
-            )
         conf = turn.confidence or 0.0
+
+        # Relaxed pre-Terminate rule: a confident pure-visual assessment is allowed
+        # without a prior tool call, so clean/obvious images do not burn retries.
+        # Only force a tool call when the VLM terminates immediately AND is unsure.
+        if tool_calls_made == 0 and iteration == 0 and conf < 0.70:
+            return False, (
+                "You terminated immediately with low confidence and no tool calls. "
+                "Call run_damage_detection (or zoom_region / segment_damage) to gather "
+                "evidence first, then terminate."
+            )
         if conf < 0.70:
             return False, (
                 f"Your confidence is {conf:.2f}, below the required 0.70. "
@@ -1152,10 +867,11 @@ def _enforce_turn_policy(
             )
         term_action = next(a for a in actions if a.name == "Terminate")
         items = term_action.arguments.get("damage_items", [])
-        if not items:
+        # Empty damage_items is valid only for a high-confidence "no damage" verdict.
+        if not items and conf < 0.90:
             return False, (
-                "Terminate requires at least one damage_item. "
-                "If no damage is visible, state confidence=1.0 and empty items with explicit reasoning."
+                "Terminate requires at least one damage_item, or confidence >= 0.90 "
+                "if you are certain the vehicle is undamaged."
             )
         for item in items:
             if item.get("damage_type") not in VALID_DAMAGE_CLASSES:
@@ -1170,7 +886,10 @@ def _enforce_turn_policy(
                 "Your response has no actions. Either call a tool or call Terminate. "
                 "If you need more information, call zoom_region on the most uncertain region."
             )
-        valid_tools = {"run_damage_detection", "zoom_region", "detect_part", "segment_damage", "Terminate"}
+        valid_tools = {
+            "run_damage_detection", "zoom_region", "detect_part",
+            "segment_damage", "execute_cost_computation", "Terminate",
+        }
         for a in actions:
             if a.name not in valid_tools:
                 return False, f"Unknown tool: {a.name}. Valid tools: {valid_tools}"
@@ -1701,6 +1420,35 @@ def _execute_codeact_tool(
         except Exception as e:
             return {"type": "error", "error": str(e), "summary": f"segment failed: {e}"}
 
+    elif name == "execute_cost_computation":
+        from models.vlm_reasoning.sandbox import execute_sandboxed
+
+        code = args.get("code", "")
+        if not code or not str(code).strip():
+            return {
+                "type": "error",
+                "error": "execute_cost_computation requires non-empty 'code' argument",
+                "summary": "no code provided",
+            }
+        engine = config.get("vlm", {}).get("sandbox_engine", "monty")
+        sandbox_out = execute_sandboxed(str(code), engine=engine)
+        if "error" in sandbox_out:
+            return {
+                "type": "error",
+                "error": sandbox_out["error"],
+                "summary": f"cost computation failed: {sandbox_out['error']}",
+            }
+        cost_result = sandbox_out["result"]
+        n_items = len(cost_result.get("damage_part_map", []))
+        return {
+            "type": "json",
+            "data": cost_result,
+            "summary": (
+                f"Cost computed: {n_items} item(s), "
+                f"total INR {cost_result.get('total_min', 0)}–{cost_result.get('total_max', 0)}"
+            ),
+        }
+
     else:
         return {"type": "error", "error": f"Unknown tool: {name}", "summary": "unknown tool"}
 
@@ -1744,35 +1492,68 @@ def _resize_for_vlm(image_path: str, max_dim: int = 640) -> str:
         return image_path
 
 
-# DEPRECATED — replaced by _run_codeact_loop_with_yolo_context
-def _run_codeact_loop_deprecated(
+def _run_codeact_loop(
     image_path: str,
     config: dict,
     trajectory_steps: list,
-) -> "tuple[list, list]":
+) -> dict:
     """
-    Runs the CodeAct reasoning loop.
-    Returns (damage_items, warnings).
-    Appends TrajectoryStep objects to trajectory_steps (mutated in place).
-    """
-    from pipeline.schema import TrajectoryStep, CodeActAction
+    Thinking-with-images CodeAct loop. The VLM sees the RAW image first (no eager
+    YOLO, no pre-injected detections) and drives every tool call itself.
 
-    max_iter = config["vlm"].get("max_iterations", 4)
-    max_retries = config["vlm"].get("codeact_max_retries", 2)
-    warnings = []
-    tool_calls_made = 0
+    The VLM may call run_damage_detection, zoom_region, detect_part, segment_damage,
+    execute_cost_computation, or Terminate. Image-returning tools are fed back as new
+    image turns ("thinking with images"); cost results are fed back as text.
+
+    Tool execution always uses the ORIGINAL full-resolution image. Only the copy
+    shown to the VLM is downscaled (image_max_dim) to keep visual-token count low.
+
+    Returns dict:
+      {
+        "damage_items": list,             # from Terminate (may be empty)
+        "cost_result": dict | None,       # last valid execute_cost_computation output
+        "yolo_detections": list,          # captured from any run_damage_detection call
+        "annotated_image_path": str|None, # YOLO-annotated image if YOLO was called
+        "tool_calls": int,
+        "warnings": list,
+      }
+    """
+    from pipeline.schema import TrajectoryStep
+
+    max_iter  = config["vlm"].get("max_iterations", 6)
+    max_retry = config["vlm"].get("codeact_max_retries", 2)
+    max_dim   = config["vlm"].get("image_max_dim", 640)
+
+    warnings: list = []
+    tool_calls = 0
+    cost_result = None
+    yolo_detections: list = []
+    annotated_image_path = None
+    last_raw = None
+
+    vlm_image_path = _resize_for_vlm(image_path, max_dim)
+
+    model_id = config["vlm"].get("model_id", "?")
+    device   = config["vlm"].get("device", "?")
+    logger.info(
+        f"CodeAct loop START | model={model_id} | device={device} "
+        f"| max_iterations={max_iter} | vlm_image={Path(vlm_image_path).name}"
+    )
 
     messages = [
+        {"role": "system", "content": CODEACT_SYSTEM_PROMPT},
         {
             "role": "user",
             "content": [
-                {"type": "image", "image": f"file://{Path(image_path).resolve()}"},
+                {"type": "image", "image": f"file://{Path(vlm_image_path).resolve()}"},
                 {"type": "text", "text": (
-                    "Assess all vehicle damage visible in this image. "
-                    "Follow the output format exactly."
+                    "Assess all visible damage on this vehicle. Use your tools to "
+                    "locate and inspect damage, compute repair cost with "
+                    "execute_cost_computation, then call Terminate with the final "
+                    "verified damage list. Respond with ONLY the JSON object."
                 )},
             ],
-        }
+        },
     ]
 
     t_loop = time.time()
@@ -1782,231 +1563,20 @@ def _run_codeact_loop_deprecated(
             warnings.append(f"Loop timeout after {iteration} iterations")
             break
 
-        turn = None
-        for attempt in range(max_retries + 1):
-            try:
-                raw = _call_vlm(
-                    messages=messages,
-                    config=config,
-                    tools=None,  # CodeAct uses structured JSON, not Qwen native tool-call format
-                    max_new_tokens=config["vlm"].get("max_new_tokens_tool", 120),
-                )
-            except VLMGenerationTimeout:
-                warnings.append(f"VLM timeout on iter {iteration} attempt {attempt}")
-                raw = None
-                break
-
-            if raw is None:
-                break
-
-            turn, parse_err = _parse_codeact_turn(raw)
-            if parse_err:
-                if attempt < max_retries:
-                    messages.append({
-                        "role": "user",
-                        "content": [{"type": "text", "text":
-                            f"Your output was not valid JSON. Error: {parse_err}. "
-                            f"Respond with only the JSON object, no other text."}]
-                    })
-                    turn = None
-                    continue
-                else:
-                    warnings.append(f"Failed to parse CodeAct JSON after {max_retries} retries: {parse_err}")
-                    turn = None
-                    break
-
-            valid, reject_reason = _enforce_turn_policy(turn, iteration, tool_calls_made)
-            if not valid:
-                if attempt < max_retries:
-                    messages.append({
-                        "role": "user",
-                        "content": [{"type": "text", "text":
-                            f"Policy violation: {reject_reason} Try again."}]
-                    })
-                    turn = None
-                    continue
-                else:
-                    warnings.append(f"Policy enforcement failed after {max_retries} retries: {reject_reason}")
-                    turn = None
-                    break
-            break  # valid turn
-
-        if turn is None:
-            break
-
-        logger.info(f"[iter {iteration}] thought: {turn.thought[:120]}")
-        if turn.uncertainty:
-            logger.info(f"[iter {iteration}] uncertainty: {turn.uncertainty}")
-
-        for action in turn.actions:
-            t_action = time.time()
-
-            if action.name == "Terminate":
-                damage_items = action.arguments.get("damage_items", [])
-                trajectory_steps.append(TrajectoryStep(
-                    turn_index=iteration,
-                    action=action,
-                    observation_type="json",
-                    observation_summary=f"Terminated with {len(damage_items)} damage items",
-                    observation_data={"damage_items": damage_items},
-                    elapsed_s=round(time.time() - t_action, 2),
-                ))
-                return damage_items, warnings
-
-            result = _execute_codeact_tool(action, image_path, config)
-            tool_calls_made += 1
-            elapsed = round(time.time() - t_action, 2)
-
-            trajectory_steps.append(TrajectoryStep(
-                turn_index=iteration,
-                action=action,
-                observation_type=result["type"],
-                observation_summary=result.get("summary", ""),
-                observation_image_path=result.get("image_path"),
-                observation_data=result.get("data"),
-                elapsed_s=elapsed,
-            ))
-
-            if result["type"] == "image" and result.get("image_path"):
-                img_p = result["image_path"]
-
-                if action.name == "run_damage_detection":
-                    dets = result.get("detections", [])
-                    if dets:
-                        det_lines = []
-                        for i, d in enumerate(dets):
-                            bbox = [int(v) for v in d.get("bbox", [])]
-                            det_lines.append(
-                                f"  [{i+1}] {d['class']} "
-                                f"conf={d['confidence']:.2f} "
-                                f"bbox={bbox}"
-                            )
-                        det_text = "YOLO detections:\n" + "\n".join(det_lines)
-                    else:
-                        det_text = "YOLO found no detections above the confidence threshold."
-
-                    obs_text = (
-                        f"Tool result: run_damage_detection\n"
-                        f"{result.get('summary', '')}\n\n"
-                        f"{det_text}\n\n"
-                        f"The annotated image above shows numbered bounding boxes for each "
-                        f"detection. Use the bbox coordinates above to call zoom_region or "
-                        f"segment_damage on any regions you need to inspect more closely."
-                    )
-                else:
-                    obs_text = (
-                        f"Tool result for {action.name}: "
-                        f"{result.get('summary', '')}. "
-                        f"The image above shows the result. "
-                        f"Continue your assessment based on what you now see."
-                    )
-
-                messages.append({
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "image": f"file://{Path(img_p).resolve()}"},
-                        {"type": "text", "text": obs_text},
-                    ],
-                })
-            elif result["type"] == "error":
-                messages.append({
-                    "role": "user",
-                    "content": [{"type": "text", "text":
-                        f"Tool {action.name} failed: {result['error']}. "
-                        f"Continue assessment with available information."}]
-                })
-
-    warnings.append(f"Loop ended without Terminate after {max_iter} iterations")
-    return [], warnings
-
-
-def _run_codeact_loop_with_yolo_context(
-    image_path: str,
-    annotated_path: str,
-    yolo_detections: list,
-    yolo_summary: str,
-    config: dict,
-    trajectory_steps: list,
-) -> "tuple[list, list]":
-    """
-    CodeAct reasoning loop with YOLO results pre-injected into the first message.
-
-    The VLM receives:
-      - Original image (raw)
-      - YOLO annotated image (bboxes drawn) — only if different from original
-      - Structured detection list as text
-
-    The VLM's job: verify detections, assign severity, zoom uncertain regions, Terminate.
-    Returns (damage_items, warnings).
-    """
-    import time as _time
-    from pathlib import Path as _Path
-    from pipeline.schema import TrajectoryStep, CodeActAction  # noqa: F401
-
-    max_iter  = config["vlm"].get("max_iterations", 2)
-    max_retry = config["vlm"].get("codeact_max_retries", 2)
-    warnings  = []
-    tool_calls = 0
-
-    # Resize images before passing to VLM to reduce visual token count
-    max_dim = config["vlm"].get("image_max_dim", 640)
-    vlm_original_path  = _resize_for_vlm(image_path, max_dim)
-    vlm_annotated_path = _resize_for_vlm(annotated_path, max_dim)
-
-    if yolo_detections:
-        det_lines = []
-        for i, d in enumerate(yolo_detections):
-            bbox = [int(v) for v in d.get("bbox", [])]
-            det_lines.append(
-                f"  Box {i+1}: {d['class'].replace('_', ' ')} "
-                f"({int(d['confidence'] * 100)}% confidence) "
-                f"at location {bbox}"
-            )
-        det_text = "YOLO already detected these damage regions:\n" + "\n".join(det_lines)
-        task_text = (
-            "IMPORTANT: Do NOT copy or repeat the detection data below. "
-            "Only output the JSON format shown in your system instructions.\n\n"
-            f"{det_text}\n\n"
-            "Review each detection. Verify class and part are correct. "
-            "Assign severity. Call Terminate with your verified damage list."
+        logger.info(
+            f"--- CodeAct iteration {iteration + 1}/{max_iter} "
+            f"| tool_calls_so_far={tool_calls} "
+            f"| loop_elapsed={time.time() - t_loop:.1f}s ---"
         )
-    else:
-        task_text = (
-            "YOLO found no detections above the confidence threshold. "
-            "Examine the image carefully and identify any visible vehicle damage yourself. "
-            "Look for: deformation, scratches, cracks, broken lamps, flat tyres, "
-            "shattered glass. If you see damage, include it in your Terminate call. "
-            "If the vehicle is genuinely undamaged, call Terminate with an empty list "
-            "and confidence >= 0.90."
-        )
-
-    first_content = [
-        {"type": "image", "image": f"file://{_Path(vlm_original_path).resolve()}"},
-    ]
-    if vlm_annotated_path != vlm_original_path and _Path(vlm_annotated_path).exists():
-        first_content.append(
-            {"type": "image", "image": f"file://{_Path(vlm_annotated_path).resolve()}"}
-        )
-    first_content.append({"type": "text", "text": task_text})
-
-    messages = [{"role": "user", "content": first_content}]
-    t_loop = _time.time()
-
-    for iteration in range(max_iter):
-        if _time.time() - t_loop > 480:
-            warnings.append(f"Loop timeout after {iteration} iterations")
-            break
-
         turn = None
         for attempt in range(max_retry + 1):
             try:
-                with _vlm_timeout(90):
-                    raw = _call_vlm(
-                        messages       = messages,
-                        max_new_tokens = config["vlm"].get("max_new_tokens_tool", 120),
-                        config         = config,
-                        tools          = None,
-                    )
+                raw = _call_vlm(
+                    messages       = messages,
+                    config         = config,
+                    tools          = None,
+                    max_new_tokens = config["vlm"].get("max_new_tokens_tool", 512),
+                )
             except VLMGenerationTimeout:
                 warnings.append(f"VLM timeout iter={iteration} attempt={attempt}")
                 raw = None
@@ -2031,10 +1601,10 @@ def _run_codeact_loop_with_yolo_context(
                     }]})
                     turn = None
                     continue
-                else:
-                    warnings.append(f"JSON parse failed after {max_retry} retries: {parse_err}")
-                    break
+                warnings.append(f"JSON parse failed after {max_retry} retries: {parse_err}")
+                break
 
+            _canonicalize_action_names(turn)
             valid, reject_reason = _enforce_turn_policy(turn, iteration, tool_calls)
             if not valid:
                 if attempt < max_retry:
@@ -2044,18 +1614,23 @@ def _run_codeact_loop_with_yolo_context(
                     }]})
                     turn = None
                     continue
-                else:
-                    warnings.append(f"Policy failed after {max_retry} retries: {reject_reason}")
-                    break
+                warnings.append(f"Policy failed after {max_retry} retries: {reject_reason}")
+                break
             break
 
         if turn is None:
             break
 
-        logger.info(f"[iter {iteration}] thought: {turn.thought[:100]}")
+        logger.info(f"[codeact iter {iteration}] thought: {turn.thought[:120]}")
+        if turn.uncertainty:
+            logger.info(f"[codeact iter {iteration}] uncertainty: {turn.uncertainty}")
+
+        # Record the model's reasoning turn so it stays in context for the next turn.
+        last_raw = raw
+        messages.append({"role": "assistant", "content": raw})
 
         for action in turn.actions:
-            t_action = _time.time()
+            t_action = time.time()
 
             if action.name == "Terminate":
                 damage_items = action.arguments.get("damage_items", [])
@@ -2065,26 +1640,27 @@ def _run_codeact_loop_with_yolo_context(
                     observation_type    = "json",
                     observation_summary = f"Terminated with {len(damage_items)} items",
                     observation_data    = {"damage_items": damage_items},
-                    elapsed_s           = round(_time.time() - t_action, 2),
+                    elapsed_s           = round(time.time() - t_action, 2),
                 ))
                 logger.info(f"VLM terminated: {len(damage_items)} damage items")
-                return damage_items, warnings
+                return {
+                    "damage_items":         damage_items,
+                    "cost_result":          cost_result,
+                    "yolo_detections":      yolo_detections,
+                    "annotated_image_path": annotated_image_path,
+                    "tool_calls":           tool_calls,
+                    "warnings":             warnings,
+                    "raw_vlm_response":     last_raw,
+                }
 
-            if action.name == "run_damage_detection":
-                messages.append({"role": "user", "content": [{
-                    "type": "text",
-                    "text": (
-                        "run_damage_detection has already run and results are "
-                        "in your context. Do not call it again. "
-                        "Use zoom_region or detect_part if you need more detail, "
-                        "or call Terminate if you are confident."
-                    )
-                }]})
-                continue
-
+            logger.info(f"[codeact iter {iteration}] tool call: {action.name} args={action.arguments}")
             result   = _execute_codeact_tool(action, image_path, config)
             tool_calls += 1
-            elapsed  = round(_time.time() - t_action, 2)
+            elapsed  = round(time.time() - t_action, 2)
+            logger.info(
+                f"[codeact iter {iteration}] tool {action.name} -> "
+                f"{result.get('type')} in {elapsed}s | {result.get('summary', '')[:120]}"
+            )
 
             trajectory_steps.append(TrajectoryStep(
                 turn_index             = iteration,
@@ -2096,19 +1672,58 @@ def _run_codeact_loop_with_yolo_context(
                 elapsed_s              = elapsed,
             ))
 
+            # Capture side-channel data for the final report / annotation UI.
+            if action.name == "run_damage_detection" and result["type"] == "image":
+                yolo_detections      = result.get("detections", yolo_detections)
+                annotated_image_path = result.get("image_path", annotated_image_path)
+            if action.name == "execute_cost_computation" and result["type"] == "json":
+                cost_result = result.get("data", cost_result)
+
+            # Feed the observation back to the VLM.
             if result["type"] == "image" and result.get("image_path"):
-                img_p = result["image_path"]
+                obs_img = _resize_for_vlm(result["image_path"], max_dim)
+                if action.name == "run_damage_detection":
+                    dets = result.get("detections", [])
+                    if dets:
+                        det_lines = "\n".join(
+                            f"  Box {i+1}: {d.get('class','?').replace('_',' ')} "
+                            f"({int(d.get('confidence',0)*100)}%) at "
+                            f"{[int(v) for v in d.get('bbox', [])]}"
+                            for i, d in enumerate(dets)
+                        )
+                        obs_text = (
+                            f"run_damage_detection result: {result.get('summary','')}\n"
+                            f"{det_lines}\n\n"
+                            "The annotated image above shows numbered boxes. Inspect any "
+                            "uncertain region with zoom_region or segment_damage, then "
+                            "compute cost and Terminate."
+                        )
+                    else:
+                        obs_text = (
+                            f"run_damage_detection result: {result.get('summary','')}\n"
+                            "YOLO found nothing above threshold. Assess the image visually "
+                            "for any damage it may have missed."
+                        )
+                else:
+                    obs_text = (
+                        f"Tool result for {action.name}: {result.get('summary','')}. "
+                        "The image above shows the result. Continue your assessment."
+                    )
                 messages.append({"role": "user", "content": [
-                    {"type": "image",
-                     "image": f"file://{_Path(img_p).resolve()}"},
-                    {"type": "text",
-                     "text": (
-                         f"Tool result for {action.name}: "
-                         f"{result.get('summary', '')}. "
-                         "The image above shows the result. "
-                         "Continue your assessment."
-                     )},
+                    {"type": "image", "image": f"file://{Path(obs_img).resolve()}"},
+                    {"type": "text", "text": obs_text},
                 ]})
+
+            elif result["type"] == "json":
+                messages.append({"role": "user", "content": [{
+                    "type": "text",
+                    "text": (
+                        f"Tool result for {action.name}: {result.get('summary','')}.\n"
+                        f"Cost data: {json.dumps(result.get('data', {}), default=str)}\n"
+                        "If this looks correct, call Terminate with your final damage list."
+                    )
+                }]})
+
             elif result["type"] == "error":
                 messages.append({"role": "user", "content": [{
                     "type": "text",
@@ -2118,10 +1733,16 @@ def _run_codeact_loop_with_yolo_context(
                     )
                 }]})
 
-    warnings.append(
-        f"VLM loop ended without Terminate after {max_iter} iterations"
-    )
-    return [], warnings
+    warnings.append(f"VLM loop ended without Terminate after {max_iter} iterations")
+    return {
+        "damage_items":         [],
+        "cost_result":          cost_result,
+        "yolo_detections":      yolo_detections,
+        "annotated_image_path": annotated_image_path,
+        "tool_calls":           tool_calls,
+        "warnings":             warnings,
+        "raw_vlm_response":     last_raw,
+    }
 
 
 def _save_trajectory(
@@ -2171,10 +1792,20 @@ def run(
     """
     Main pipeline entry point. Called by FastAPI backend.
 
-    Stage 1 [always]:  YOLO runs unconditionally → detections + annotated image
-    Stage 2 [always]:  VLM CodeAct loop with YOLO context pre-injected
-    Stage 3 [fallback]: if VLM returns empty → use YOLO detections directly
-    Stage 4 [always]:  cost lookup → FinalDamageReport
+    Stage 1 [always]:  VLM CodeAct loop drives tool calls on the RAW image
+                       (thinking with images). The VLM decides when to call
+                       run_damage_detection, zoom_region, detect_part,
+                       segment_damage, and execute_cost_computation.
+    Stage 2 [always]:  Build the costed damage map — prefer the VLM's sandboxed
+                       execute_cost_computation result, else cost-lookup the VLM's
+                       Terminate damage_items.
+    Stage 3 [fallback]: if the VLM produced nothing usable → run YOLO and use its
+                        detections directly (safety net).
+    Stage 4 [always]:  approval gate → FinalDamageReport.
+
+    The UI contract (detections_with_bbox + annotated_image_path) is always
+    populated: from the VLM's run_damage_detection call if it made one, otherwise
+    from a single YOLO pass that does not influence VLM reasoning.
 
     Returns:
         FinalDamageReport as dict (via .model_dump())
@@ -2198,21 +1829,46 @@ def run(
         img_w, img_h = 1920, 1080
         warnings_list.append("Could not read image dimensions — using fallback 1920x1080")
 
-    # ── Stage 1: YOLO always runs first ──────────────────────────────────────
-    logger.info(f"Stage 1: Running YOLO on {image_path}")
-    yolo_result = _run_yolo_eagerly(image_path, config)
-
-    if not yolo_result["success"]:
-        warnings_list.append(f"YOLO failed: {yolo_result['error']}")
-
-    yolo_detections = yolo_result["detections"]
-    annotated_path  = yolo_result["annotated_image_path"]
-    logger.info(f"YOLO: {yolo_result['summary']}")
-
-    # Build DetectionWithBBox from YOLO results — preserves spatial bbox information
     from pipeline.schema import DetectionWithBBox as _DetWithBBox
     from models.vlm_reasoning.cost_db import lookup_cost as _lc
 
+    # ── Stage 1: PiAgent recursive CodeAct loop (VLM-only, Ollama backend) ──────
+    _load_models(config)   # Ollama health check (raises if not reachable)
+
+    logger.info("Stage 1: Starting PiAgent CodeAct loop (qwen3.5:9b via Ollama)")
+    from models.vlm_reasoning.pi_agent import PiAgent
+    agent    = PiAgent(config)
+    loop_out = agent.run(
+        image_path       = image_path,
+        trajectory_steps = trajectory_steps,
+    )
+    warnings_list.extend(loop_out["warnings"])
+
+    vlm_damage_items = loop_out["damage_items"]
+    cost_result      = loop_out["cost_result"]
+    yolo_detections  = loop_out["yolo_detections"]
+    annotated_path   = loop_out["annotated_image_path"]
+
+    vlm_produced = bool(vlm_damage_items) or bool(
+        cost_result and cost_result.get("damage_part_map")
+    )
+
+    # Ensure YOLO detections exist for the annotation UI and the fallback path.
+    # If the VLM never called run_damage_detection, run YOLO once now (UI-only —
+    # it does not influence the VLM reasoning that already finished above).
+    yolo_success = True
+    if not yolo_detections or not annotated_path:
+        logger.info("VLM did not call run_damage_detection — running YOLO for UI/fallback")
+        yolo_ui = _run_yolo_eagerly(image_path, config)
+        yolo_success = yolo_ui["success"]
+        if not yolo_success:
+            warnings_list.append(f"YOLO (UI/fallback) failed: {yolo_ui['error']}")
+        if not yolo_detections:
+            yolo_detections = yolo_ui["detections"]
+        if not annotated_path:
+            annotated_path = yolo_ui["annotated_image_path"]
+
+    # Build DetectionWithBBox from YOLO results — preserves spatial bbox information
     detections_with_bbox = []
     for _i, _det in enumerate(yolo_detections):
         _bbox = _det.get("bbox", [0.0, 0.0, 0.0, 0.0])
@@ -2239,20 +1895,6 @@ def run(
             cost_min   = _cmin,
             cost_max   = _cmax,
         ))
-
-    # ── Stage 2: VLM CodeAct loop with YOLO context ──────────────────────────
-    _load_models(config)
-
-    logger.info("Stage 2: Starting VLM CodeAct loop")
-    vlm_damage_items, loop_warnings = _run_codeact_loop_with_yolo_context(
-        image_path      = image_path,
-        annotated_path  = annotated_path,
-        yolo_detections = yolo_detections,
-        yolo_summary    = yolo_result["summary"],
-        config          = config,
-        trajectory_steps= trajectory_steps,
-    )
-    warnings_list.extend(loop_warnings)
 
     # Merge VLM classifications into detections_with_bbox when VLM produced output
     if vlm_damage_items:
@@ -2291,23 +1933,29 @@ def run(
                 ))
         detections_with_bbox = _updated
 
-    # ── Stage 3: Fallback if VLM returned nothing ─────────────────────────────
-    if not vlm_damage_items:
-        if yolo_detections:
-            warnings_list.append(
-                "VLM produced no output — falling back to YOLO detections directly"
-            )
-            logger.warning("VLM fallback: using YOLO detections with heuristic severity")
-            costed: List[DamagePartEntry] = _yolo_to_damage_entries(yolo_detections, config)
-        else:
-            warnings_list.append(
-                "EMPTY_DAMAGE_MAP: Both YOLO and VLM found no damage. "
-                "Escalating to human review."
-            )
-            costed = []
-    else:
-        # VLM succeeded — apply cost lookup to its output
-        costed = []
+    # ── Stage 2: Build the costed damage map ──────────────────────────────────
+    # Preference order:
+    #   1. VLM's sandboxed execute_cost_computation result (already priced)
+    #   2. VLM's Terminate damage_items, priced via COST_DB lookup
+    #   3. YOLO fallback (safety net)
+    costed: List[DamagePartEntry] = []
+
+    if cost_result and cost_result.get("damage_part_map"):
+        logger.info("Using VLM execute_cost_computation result for cost map")
+        for e in cost_result["damage_part_map"]:
+            try:
+                costed.append(DamagePartEntry(
+                    damage   = str(e.get("damage", "unknown")),
+                    part     = str(e.get("part", "unknown")),
+                    severity = str(e.get("severity", "minor")),
+                    cost_min = int(e.get("cost_min", 0)),
+                    cost_max = int(e.get("cost_max", 0)),
+                ))
+            except Exception as _e:
+                warnings_list.append(f"Skipped malformed cost entry {e}: {_e}")
+
+    if not costed and vlm_damage_items:
+        logger.info("Pricing VLM Terminate damage_items via COST_DB lookup")
         for item in vlm_damage_items:
             cost_min, cost_max = lookup_cost(
                 item.get("damage_type", ""),
@@ -2321,21 +1969,32 @@ def run(
                 cost_max = cost_max,
             ))
 
+    # ── Stage 3: YOLO fallback if VLM produced nothing usable ─────────────────
+    if not costed:
+        vlm_produced = False
+        if yolo_detections:
+            warnings_list.append(
+                "VLM produced no usable output — falling back to YOLO detections directly"
+            )
+            logger.warning("VLM fallback: using YOLO detections with heuristic severity")
+            costed = _yolo_to_damage_entries(yolo_detections, config)
+        else:
+            warnings_list.append(
+                "EMPTY_DAMAGE_MAP: Both VLM and YOLO found no damage. "
+                "Escalating to human review."
+            )
+
     # ── Stage 4: Costs and approval ───────────────────────────────────────────
     total_min = sum(e.cost_min for e in costed)
     total_max = sum(e.cost_max for e in costed)
 
     threshold = config.get("approval", {}).get("auto_approve_threshold_inr", 50000)
-    vlm_verified = not any(
-        "falling back to YOLO" in w or "VLM produced no output" in w
-        for w in warnings_list
-    )
     if not costed:
         approval = "ESCALATE_TO_HUMAN"
-    elif not vlm_verified:
+    elif not vlm_produced:
         approval = "ESCALATE_TO_HUMAN"
         warnings_list.append(
-            "YOLO_ONLY_RESULT: VLM did not verify detections. "
+            "YOLO_ONLY_RESULT: VLM did not produce a verified assessment. "
             "Escalating for human review regardless of cost."
         )
     elif total_max <= threshold:
@@ -2346,14 +2005,6 @@ def run(
     # ── Tool call log ─────────────────────────────────────────────────────────
     tool_log = [
         ToolCallRecord(
-            tool         = "run_damage_detection",
-            args_summary = f"conf={config.get('damage_detection', {}).get('confidence_threshold', 0.15)}",
-            elapsed_s    = 0.0,
-            result_keys  = ["detections", "total_detections", "annotated_image_path"],
-            success      = yolo_result["success"],
-        )
-    ] + [
-        ToolCallRecord(
             tool         = step.action.name,
             args_summary = str(step.action.arguments)[:80],
             elapsed_s    = step.elapsed_s,
@@ -2362,6 +2013,14 @@ def run(
         )
         for step in trajectory_steps
     ]
+    if not yolo_success:
+        tool_log.append(ToolCallRecord(
+            tool         = "run_damage_detection",
+            args_summary = "ui_fallback",
+            elapsed_s    = 0.0,
+            result_keys  = [],
+            success      = False,
+        ))
 
     elapsed = round(time.time() - t_start, 2)
 
@@ -2388,6 +2047,6 @@ def run(
         tool_call_log        = tool_log,
         total_inference_s    = elapsed,
         warnings             = list(dict.fromkeys(warnings_list)),
-        raw_vlm_response     = None,
+        raw_vlm_response     = loop_out.get("raw_vlm_response"),
         annotated_image_path = annotated_path,
     ).model_dump()

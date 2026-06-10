@@ -1,0 +1,87 @@
+{
+  "trajectory_id": "271e471c287e44d6b22bc177d1a2939f",
+  "image_path": "/Users/khirawat/Documents/GitHub/veh_dmg_detection/data/uploads/5749c480782942949b38ad9d8c88bbe1.jpg",
+  "image_width": 1000,
+  "image_height": 667,
+  "created_at": "2026-06-04T16:47:42.948116+00:00",
+  "model_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "confidence_threshold": 0.15,
+          "reason": "locate damage"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Detected 2 damage region(s): 1x dent, 1x lamp broken",
+      "observation_image_path": "data/uploads/yolo_annotated/5749c480782942949b38ad9d8c88bbe1_yolo_453300.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.35
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            1,
+            247,
+            495,
+            535
+          ],
+          "reason": "inspect broken headlight"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [1, 247, 495, 535]",
+      "observation_image_path": "/tmp/zoom_87f4f209.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.01
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "segment_damage",
+        "arguments": {
+          "bbox": [
+            424,
+            167,
+            807,
+            495
+          ],
+          "reason": "inspect dent"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Segmented damage at [424, 167, 807, 495]",
+      "observation_image_path": "/tmp/seg_out/5749c480782942949b38ad9d8c88bbe1_masked.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.86
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "lamp broken",
+      "part": "left_fender",
+      "severity": "moderate",
+      "cost_min": 3000,
+      "cost_max": 8000
+    },
+    {
+      "damage": "dent",
+      "part": "front_left_door",
+      "severity": "moderate",
+      "cost_min": 10000,
+      "cost_max": 30000
+    }
+  ],
+  "total_min": 13000,
+  "total_max": 38000,
+  "total_elapsed_s": 419.23,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}
