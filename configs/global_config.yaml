@@ -1,43 +1,38 @@
 vlm:
-  model_id: "Qwen/Qwen2.5-VL-3B-Instruct"   # 3B for fast MPS inference; use 7B on GPU host
+  model_id: "qwen3.5:9b"               # Ollama model tag (the live brain runs via Ollama)
+  ollama_base_url: "http://localhost:11434"
   device: "mps"                        # Apple Silicon MPS; change to "cuda" on GPU host
-  max_new_tokens_tool: 512
+  max_new_tokens_tool: 1024          # 512 truncated verbose thoughts mid-JSON → parse fails
   max_new_tokens_final: 1024
-  temperature: 0.1
-  do_sample: false
+  # Qwen3.5 "Best Practices" — instruct / non-thinking sampling.
+  # thinking MUST stay false: thinking mode spends the whole token budget on
+  # <think> and never emits the JSON action (confirmed empty-content truncation).
+  thinking: false
+  temperature: 0.7
+  top_p: 0.8
+  top_k: 20
+  presence_penalty: 1.5               # curbs endless-repetition failure mode
+  num_ctx: 8192                       # wider context so multi-image history keeps the system prompt
+  do_sample: true
   max_iterations: 6
   codeact_max_retries: 2
-  codeact_min_confidence: 0.70
-  image_max_dim: 640
-  sandbox_engine: "monty"               # "monty" (secure Rust interpreter) or "exec"
+  image_max_dim: 640                  # downscale for the multi-turn loop (token budget)
+  image_detect_dim: 1024             # higher res for the single damage-detection pass → tighter bboxes
 
 approval:
-  auto_approve_threshold_inr: 50000
+  # Approval is based on the VISUAL assessment quality (whether the VLM's final
+  # damage claims are corroborated by its own detection pass), NOT on cost.
+  # There is no cost threshold — cost never gates approval.
 
-damage_detection:
-  weights_path: "models/damage_detection/models/best.pt"
-  confidence_threshold: 0.15
-  device: "cpu"
-  merge_iou_threshold: 0.30
-  merge_same_class_only: true
-
+# Qwen (VLM) is the SOLE brain. SAM2 below runs ONLY in the backend to produce the
+# segmentation masks and the merged-union (VLM ∪ SAM2) boxes shown in the UI — it is
+# NOT a decision tool and carries no damage labels. (No YOLO, no DINOv2 in the path.)
 part_segmentation:
-  grounding_dino:
-    config_path: "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py"
-    weights_path: "weights/groundingdino_swint_ogc.pth"
-    box_threshold: 0.30
-    text_threshold: 0.25
-    text_prompt: "front bumper . rear bumper . hood . car door . windshield . rear windshield . fender . trunk lid . roof panel . headlight . taillight"
   sam2:
-    config: "sam2_hiera_base_plus.yaml"
-    weights_path: "weights/sam2.1_hiera_base_plus.pt"
+    weights_path: "models/damage_detection/models/sam2.1_b.pt"   # stock ultralytics SAM2 base
     device: "mps"
   postprocess:
-    min_mask_area_px: 500
-    allow_duplicate_labels: false
-  output:
-    save_annotated_images: true
-    annotated_output_dir: "outputs/part_segmentation/"
+    min_mask_area_px: 800
 
 plate_rc_detection:
   weights_path: "models/plate_rc_detection/plate.pt"

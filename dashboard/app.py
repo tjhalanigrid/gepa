@@ -323,6 +323,48 @@ def _render_detection_legend(damage_map: list) -> None:
             )
 
 
+# Plain-English description of what each agent tool does (shown in the log).
+_TOOL_HELP = {
+    "run_damage_detection": "VLM vision pass — the brain locates & classifies all damage it sees.",
+    "zoom_region":          "Crops & magnifies a region so the brain can inspect it closely.",
+    "detect_part":          "Asks the brain to pinpoint a specific vehicle part.",
+    "Terminate":            "The brain is confident — ends the loop and returns final findings.",
+}
+
+
+def _render_iteration_logs(job_id: str) -> None:
+    """Iteration-logs panel: each tool the agent chose to call, and WHY."""
+    if not job_id:
+        return
+    cache_key = f"iters_{job_id}"
+    if cache_key not in st.session_state:
+        try:
+            r = requests.get(f"{API_BASE}/job/{job_id}/iterations", timeout=10)
+            st.session_state[cache_key] = r.json() if r.status_code == 200 else {}
+        except Exception:
+            st.session_state[cache_key] = {}
+    data = st.session_state.get(cache_key) or {}
+    iters = data.get("iterations", [])
+
+    with st.expander(f"🧠 Agent iteration logs ({len(iters)} tool call(s))", expanded=False):
+        st.caption(
+            "The VLM brain chooses its own tools, order, and count — this is what it "
+            "actually did this run (free-form, not a fixed pipeline)."
+        )
+        if not iters:
+            st.info("No tool calls recorded — the brain assessed the image in one pass.")
+        for it in iters:
+            tool = it.get("tool", "?")
+            ok = "✅" if it.get("ok", True) else "⚠️"
+            why = it.get("reason") or "—"
+            st.markdown(
+                f"{ok} **{tool}**  ·  _{it.get('elapsed_s', 0)}s_  ·  turn {it.get('turn', 0)}\n\n"
+                f"&nbsp;&nbsp;**Why:** {why}  \n"
+                f"&nbsp;&nbsp;**What it does:** {_TOOL_HELP.get(tool, 'tool')}  \n"
+                f"&nbsp;&nbsp;**Result:** {it.get('summary', '')[:160]}"
+            )
+
+
 def render_approved() -> None:
     report = st.session_state.report
 
@@ -330,7 +372,9 @@ def render_approved() -> None:
     st.success("✓ AUTO APPROVED")
 
     job_id = st.session_state.get("job_id", "")
-    tab_orig, tab_ann = st.tabs(["Original", "Detected Damage"])
+    tab_orig, tab_ann, tab_merged, tab_masked = st.tabs(
+        ["Original", "Detected Damage", "Merged (VLM ∪ SAM2)", "Damage masks (SAM2)"]
+    )
 
     with tab_orig:
         if st.session_state.uploaded_image_bytes:
@@ -339,6 +383,21 @@ def render_approved() -> None:
                 caption="Submitted Image",
                 use_container_width=True,
             )
+
+    with tab_masked:
+        sam_key = f"sam_bytes_{job_id}"
+        if not st.session_state.get(sam_key) and job_id:
+            try:
+                r = requests.get(f"{API_BASE}/job/{job_id}/masked_image", timeout=15)
+                if r.status_code == 200:
+                    st.session_state[sam_key] = r.content
+            except Exception:
+                pass
+        if st.session_state.get(sam_key):
+            st.image(st.session_state[sam_key], use_container_width=True,
+                     caption="SAM2 segmentation masks — colour = damage class")
+        else:
+            st.info("SAM2 masks not available")
 
     with tab_ann:
         ann_key = f"annotated_bytes_{job_id}"
@@ -354,10 +413,31 @@ def render_approved() -> None:
         ann_bytes = st.session_state.get(ann_key)
         if ann_bytes:
             st.image(ann_bytes, use_container_width=True,
-                     caption="YOLO detected damage regions (numbered)")
+                     caption="VLM detected damage regions (numbered)")
             _render_detection_legend(report.get("damage_part_map", []))
         else:
             st.info("Annotated image not available")
+
+    with tab_merged:
+        mrg_key = f"merged_bytes_{job_id}"
+        if not st.session_state.get(mrg_key) and job_id:
+            try:
+                r = requests.get(f"{API_BASE}/job/{job_id}/merged_image", timeout=10)
+                if r.status_code == 200:
+                    st.session_state[mrg_key] = r.content
+            except Exception:
+                pass
+        if st.session_state.get(mrg_key):
+            st.image(st.session_state[mrg_key], use_container_width=True,
+                     caption="Merged union — boxes coloured by source")
+            st.caption(
+                "🟩 green = VLM damage   🟧 orange = VLM confirmed by SAM2 region   "
+                "🟦 blue = SAM2 region only (no VLM label)"
+            )
+        else:
+            st.info("Merged image not available")
+
+    _render_iteration_logs(job_id)
 
     st.subheader("Damage Summary")
 
@@ -450,13 +530,13 @@ def render_escalated() -> None:
     if step == 1:
         session_id_s1 = st.session_state.session_id
         if st.session_state.uploaded_image_bytes:
-            tab_orig, tab_ann, tab_masked = st.tabs(
-                ["Original", "Detected Damage", "Damage masks (SAM2)"]
+            tab_orig, tab_ann, tab_merged, tab_masked = st.tabs(
+                ["Original", "Detected Damage", "Merged (VLM ∪ SAM2)", "Damage masks (SAM2)"]
             )
+            job_id_s1 = st.session_state.get("job_id", "")
             with tab_orig:
                 st.image(st.session_state.uploaded_image_bytes, use_container_width=True)
             with tab_ann:
-                job_id_s1 = st.session_state.get("job_id", "")
                 ann_key = f"annotated_bytes_{job_id_s1}"
                 if not st.session_state.get(ann_key) and job_id_s1:
                     try:
@@ -470,67 +550,51 @@ def render_escalated() -> None:
                 ann_bytes = st.session_state.get(ann_key)
                 if ann_bytes:
                     st.image(ann_bytes, use_container_width=True,
-                             caption="Numbered boxes = YOLO detections")
+                             caption="Numbered boxes = VLM damage detections")
                     _render_detection_legend(damage_map)
                 else:
                     st.info("Annotated image not available")
-            with tab_masked:
-                sam_key = f"sam_bytes_{job_id_s1}"
-                if not st.session_state.get(sam_key):
-                    col_btn, _ = st.columns([1, 3])
-                    with col_btn:
-                        if st.button("Generate SAM2 masks", key=f"gen_sam_{job_id_s1}"):
-                            with st.spinner("Running SAM2 segmentation (30-60s)..."):
-                                url = (
-                                    f"{API_BASE}/session/{session_id_s1}/masked_image"
-                                    if session_id_s1
-                                    else f"{API_BASE}/job/{job_id_s1}/masked_image"
-                                )
-                                try:
-                                    r = requests.get(url, timeout=90)
-                                    if r.status_code == 200:
-                                        st.session_state[sam_key] = r.content
-                                        st.rerun()
-                                    elif r.status_code == 503:
-                                        st.session_state[f"sam_error_{job_id_s1}"] = (
-                                            "SAM2 weights missing. "
-                                            "Run: python3 scripts/download_sam2_weights.py"
-                                        )
-                                    elif r.status_code == 404:
-                                        st.session_state[f"sam_error_{job_id_s1}"] = (
-                                            "No detections to mask."
-                                        )
-                                    else:
-                                        try:
-                                            detail = r.json().get("detail", r.text[:100])
-                                        except Exception:
-                                            detail = r.text[:100]
-                                        st.session_state[f"sam_error_{job_id_s1}"] = (
-                                            f"Mask generation failed: {detail}"
-                                        )
-                                except requests.Timeout:
-                                    st.session_state[f"sam_error_{job_id_s1}"] = (
-                                        "SAM2 timed out (>90s). Try a smaller image."
-                                    )
-                                except Exception as _e:
-                                    st.session_state[f"sam_error_{job_id_s1}"] = str(_e)
-                    err = st.session_state.get(f"sam_error_{job_id_s1}")
-                    if err:
-                        st.warning(err)
-                    else:
-                        st.info(
-                            "Click to generate precise segmentation masks "
-                            "over each detected damage region using SAM2."
+            with tab_merged:
+                mrg_key = f"merged_bytes_{job_id_s1}"
+                if not st.session_state.get(mrg_key) and job_id_s1:
+                    try:
+                        r = requests.get(
+                            f"{API_BASE}/job/{job_id_s1}/merged_image", timeout=10
                         )
+                        if r.status_code == 200:
+                            st.session_state[mrg_key] = r.content
+                    except Exception:
+                        pass
+                mrg_bytes = st.session_state.get(mrg_key)
+                if mrg_bytes:
+                    st.image(mrg_bytes, use_container_width=True,
+                             caption="Merged union — boxes coloured by source")
+                    st.caption(
+                        "🟩 green = VLM damage   🟧 orange = VLM confirmed by SAM2 region   "
+                        "🟦 blue = SAM2 region only (no VLM label)"
+                    )
+                else:
+                    st.info("Merged image not available")
+            with tab_masked:
+                # Masks are pre-generated during the run — auto-fetch (no button).
+                sam_key = f"sam_bytes_{job_id_s1}"
+                if not st.session_state.get(sam_key) and job_id_s1:
+                    try:
+                        r = requests.get(f"{API_BASE}/job/{job_id_s1}/masked_image", timeout=15)
+                        if r.status_code == 200:
+                            st.session_state[sam_key] = r.content
+                    except Exception:
+                        pass
                 if st.session_state.get(sam_key):
                     st.image(
                         st.session_state[sam_key],
                         use_container_width=True,
                         caption="SAM2 segmentation masks — colour = damage class",
                     )
-                    if st.button("Clear masks", key=f"clear_sam_{job_id_s1}"):
-                        del st.session_state[sam_key]
-                        st.rerun()
+                else:
+                    st.info("SAM2 masks not available")
+
+        _render_iteration_logs(job_id_s1)
 
         if damage_map:
             severity_icon = {"minor": "🟢", "moderate": "🟡", "severe": "🔴"}

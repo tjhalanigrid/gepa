@@ -5,48 +5,51 @@ COST_DB is the single source of truth for all (damage, part) → INR cost ranges
 Update this dict as domain knowledge improves.
 Structure: COST_DB[damage_class][part_label] = (cost_min_inr, cost_max_inr)
 
-Part labels use mixed formats (spaces and underscores) intentionally matching
-the original sandbox.py. lookup_cost() normalises both sides at query time.
+Part labels use UNDERSCORE format consistently, matching the part vocabulary in
+the system prompt (front_bumper, right_fender, …). This matters because the cost
+sandbox does an EXACT-key lookup `COST_DB.get(damage,{}).get(part, default)` — if
+the keys here used spaces, the model's underscore part names would all miss and
+fall back to the default. lookup_cost() additionally normalises at query time.
 """
 
 from typing import Dict, Tuple
 
 COST_DB: Dict[str, Dict[str, Tuple[int, int]]] = {
     "dent": {
-        "front bumper":      (8000,  25000),
-        "rear bumper":       (8000,  25000),
+        "front_bumper":      (8000,  25000),
+        "rear_bumper":       (8000,  25000),
         "hood":              (12000, 35000),
         "front_left_door":   (10000, 30000),
         "front_right_door":  (10000, 30000),
         "rear_left_door":    (10000, 30000),
         "rear_right_door":   (10000, 30000),
-        "left fender":       (8000,  20000),
-        "right fender":      (8000,  20000),
-        "roof panel":        (15000, 45000),
-        "trunk lid":         (10000, 28000),
+        "left_fender":       (8000,  20000),
+        "right_fender":      (8000,  20000),
+        "roof_panel":        (15000, 45000),
+        "trunk_lid":         (10000, 28000),
     },
     "scratch": {
-        "front bumper":      (3000,  8000),
-        "rear bumper":       (3000,  8000),
+        "front_bumper":      (3000,  8000),
+        "rear_bumper":       (3000,  8000),
         "hood":              (4000,  10000),
         "front_left_door":   (3500,  9000),
         "front_right_door":  (3500,  9000),
         "rear_left_door":    (3500,  9000),
         "rear_right_door":   (3500,  9000),
-        "left fender":       (3000,  7000),
-        "right fender":      (3000,  7000),
-        "roof panel":        (5000,  12000),
-        "trunk lid":         (3500,  9000),
+        "left_fender":       (3000,  7000),
+        "right_fender":      (3000,  7000),
+        "roof_panel":        (5000,  12000),
+        "trunk_lid":         (3500,  9000),
     },
     "crack": {
         "windshield":        (15000, 40000),
-        "rear windshield":   (12000, 35000),
-        "front bumper":      (5000,  15000),
-        "rear bumper":       (5000,  15000),
+        "rear_windshield":   (12000, 35000),
+        "front_bumper":      (5000,  15000),
+        "rear_bumper":       (5000,  15000),
     },
     "glass_shatter": {
         "windshield":        (20000, 55000),
-        "rear windshield":   (15000, 45000),
+        "rear_windshield":   (15000, 45000),
         "headlight":         (8000,  20000),
         "taillight":         (5000,  15000),
         "front_left_door":   (10000, 25000),

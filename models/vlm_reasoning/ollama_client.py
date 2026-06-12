@@ -90,8 +90,13 @@ def chat(
     messages: List[dict],
     model: str    = DEFAULT_MODEL,
     base_url: str = DEFAULT_BASE_URL,
-    temperature: float = 0.1,
+    temperature: float = 0.7,
     num_predict: int   = 512,
+    think: Optional[bool] = False,
+    top_p: Optional[float] = 0.8,
+    top_k: Optional[int] = 20,
+    presence_penalty: Optional[float] = 1.5,
+    num_ctx: Optional[int] = 8192,
 ) -> str:
     """
     POST /api/chat and return the assistant content string.
@@ -100,24 +105,41 @@ def chat(
         messages:    Conversation history in Ollama format (see module docstring).
         model:       Ollama model tag, e.g. "qwen3.5:9b".
         base_url:    Ollama server URL.
-        temperature: Sampling temperature (0.0 = greedy, 1.0 = creative).
+        temperature: Sampling temperature.
         num_predict: Maximum tokens to generate.
+        think:       Thinking mode. DEFAULT False — Qwen3.5 thinking mode burns the
+                     whole num_predict budget on <think> and never emits the JSON
+                     action, so we disable it for this structured CodeAct task.
+        top_p, top_k, presence_penalty: Qwen3.5 instruct (non-thinking) sampling
+                     defaults (model card "Best Practices"). presence_penalty curbs
+                     the endless-repetition failure mode.
 
     Returns:
-        The raw assistant content string from the model.
+        The assistant content string (thinking content excluded when think=False).
 
     Raises:
         RuntimeError: On HTTP errors or connection failures.
     """
-    payload = {
+    options: dict = {"temperature": temperature, "num_predict": num_predict}
+    if num_ctx is not None:
+        # Ollama default context is small (~4096); images cost ~1700 tokens each, so
+        # a multi-image agent run evicts the system prompt. Widen it.
+        options["num_ctx"] = num_ctx
+    if top_p is not None:
+        options["top_p"] = top_p
+    if top_k is not None:
+        options["top_k"] = top_k
+    if presence_penalty is not None:
+        options["presence_penalty"] = presence_penalty
+
+    payload: dict = {
         "model":    model,
         "messages": messages,
         "stream":   False,
-        "options": {
-            "temperature": temperature,
-            "num_predict": num_predict,
-        },
+        "options":  options,
     }
+    if think is not None:
+        payload["think"] = think    # Ollama thinking-model toggle
 
     body = json.dumps(payload).encode("utf-8")
     req  = urllib.request.Request(

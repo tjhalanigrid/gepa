@@ -58,15 +58,21 @@ class FinalDamageReport(BaseModel):
     image_path: str
     damage_part_map: List[DamagePartEntry]
     detections_with_bbox: List["DetectionWithBBox"] = Field(default_factory=list)
+    # Merged union (VLM ∪ SAM2) findings as source-tagged boxes for the UI.
+    merged_detections: List[Dict[str, Any]] = Field(default_factory=list)
     total_min: int
     total_max: int
     currency: str = "INR"
     approval_decision: str             # AUTO_APPROVED | ESCALATE_TO_HUMAN | UNKNOWN
     tool_call_log: List[ToolCallRecord]
+    # Per-tool-call iteration log for the UI: {turn, tool, reason, summary, elapsed_s, ok}.
+    iterations: List[Dict[str, Any]] = Field(default_factory=list)
     total_inference_s: float
     warnings: List[str]
     raw_vlm_response: Optional[str]    # last assistant message — keep for MVP debugging
     annotated_image_path: Optional[str] = None
+    merged_image_path: Optional[str] = None
+    masked_image_path: Optional[str] = None    # pre-generated SAM2 mask overlay
 
 
 # ── HITL Layer ────────────────────────────────────────────────────────────────
@@ -200,9 +206,32 @@ class DetectionWithBBox(BaseModel):
     part: str
     severity: str
     confidence: float           # 0.0–1.0 (0.0 for human-added boxes)
-    source: str = "yolo"        # "yolo" | "vlm_visual" | "human"
+    # source provenance after the untrained-models + VLM-brain rework:
+    #   "vlm"  → VLM-only visual claim   "both" → VLM claim grounded in a model region
+    #   "model"→ model region with no VLM damage   "human" → dashboard edit
+    #   (legacy: "yolo" | "vlm_visual" | "vlm_only" | "vlm_verified")
+    source: str = "vlm"
     cost_min: int = 0
     cost_max: int = 0
+    # ── Grounded-union evidence tags (untrained-models + VLM-brain design) ──
+    grounded: bool = False      # True if this damage falls inside a model-proposed region/ROI
+    needs_review: bool = False  # True for ungrounded VLM claims or unconfirmed model regions
+    anomaly_score: float = 0.0  # DINOv2 region-vs-vehicle distance (0.0 if unavailable)
+
+
+class RegionEvidence(BaseModel):
+    """
+    A spatial region proposed by the untrained CV models (vehicle ROI from stock
+    YOLO, or a SAM2+DINOv2 segment). Carries NO damage label — it exists purely to
+    ground/anchor the VLM's visual damage claims. The VLM names what (if anything)
+    is damaged inside it.
+    """
+    bbox: List[float]                       # [x1, y1, x2, y2] original-image pixels
+    source: str                             # "vehicle_roi" | "sam2_dinov2"
+    area_px: int = 0
+    anomaly_score: float = 0.0              # DINOv2 distance from vehicle-mean embedding
+    cls: Optional[str] = None               # COCO class for vehicle_roi (car/truck/...); None for segments
+    confidence: float = 0.0                 # detector confidence (vehicle_roi only)
 
 
 class BBoxCorrectionRequest(BaseModel):

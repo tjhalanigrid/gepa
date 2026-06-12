@@ -28,11 +28,12 @@ this file, it is not in scope.
 
 ### The Mental Model
 
-The VLM is not a post-processor. It is the orchestrator. It sees the image first,
-decides which CV tools to invoke, calls them, receives structured results, reasons
-over spatial overlap internally, generates Python cost computation code, executes
-it in a sandbox, and returns the final report. Every CV model is a tool the VLM
-can call or skip.
+Qwen (the VLM) is the **sole brain**. It sees the image, classifies damage itself,
+and may call a few OPTIONAL vision aids — its choice, any order, any count, or none.
+There is no fixed workflow. The trained `best.pt` detector is **retired**
+(`models/_archive/best.pt`). Repair cost is computed in the **backend** (plain
+Python over `COST_DB`), not by the LLM. **SAM2** runs in the backend only, to render
+the segmentation masks and the **merged-union (VLM ∪ SAM2) boxes** in the UI.
 
 ```
 image
@@ -40,25 +41,37 @@ image
   ▼
 orchestrator.run()
   │
-  ▼
-VLM (Qwen2-VL-7B) ── sees raw image ── forms hypothesis
+  ▼  Stage 1 — VLM brain loop (free-form)
+PiAgent (qwen3.5:9b via Ollama) ── sees the image ── classifies damage itself
+  │   optional tools, agent's choice: run_damage_detection · zoom_region · detect_part
+  └─ Terminate → damage_items [{damage_type, part, severity, confidence, bbox_pct}]
   │
-  ├─ tool call → run_damage_detection(image_path)
-  │     └─ YOLOv8 best.pt → damage bboxes JSON → returned to VLM
+  ▼  Stage 2-3 — BACKEND (deterministic, no LLM)
+  ├─ detections_with_bbox  (bbox_pct → pixels)
+  ├─ cost  = lookup_cost() over COST_DB        → damage_part_map, totals
   │
-  ├─ tool call → run_part_segmentation(image_path)
-  │     └─ Grounding DINO → SAM2.1 → part masks JSON → returned to VLM
+  ▼  Stage 4 — SAM2 (backend) + merged union
+  ├─ SAM2 region boxes  ∪  VLM damage boxes    → merged_detections (source-tagged:
+  │     vlm / both / sam2)   +  SAM2 masks (generate_masked_image)
   │
-  ├─ VLM reasons: damage bbox ∩ part bbox → damage-to-part map
-  │   (spatial reasoning, not OpenCV math)
-  │
-  ├─ tool call → execute_cost_computation(python_code)
-  │     └─ sandbox.py restricted exec → result dict → returned to VLM
-  │
-  └─ VLM synthesizes → FinalDamageReport JSON
-        │
-        └─ auto-approve gate → AUTO_APPROVED or ESCALATE_TO_HUMAN
+  ▼  Stage 5 — annotated image + approval + iteration log
+  └─ FinalDamageReport
+        • detections_with_bbox  → "Detected Damage" boxes
+        • merged_detections     → "Merged (VLM ∪ SAM2)" boxes
+        • masked_image          → "Damage masks (SAM2)"
+        • iterations            → iteration-logs panel (tool, why, result)
+        • approval: AUTO_APPROVED, or ESCALATE_TO_HUMAN
 ```
+
+**Anti-hallucination contract:** approval is based on the VISUAL assessment quality
+(what the AI sees), NEVER on cost. A VLM final claim is trusted only when the VLM's
+*independent* `run_damage_detection` pass corroborated the same damage class
+(class-level corroboration, not the unreliable 9B bbox coordinates, which are
+clamped to [0,100]% and used only for drawing/segmentation). It escalates when a
+final claim is uncorroborated, or no usable assessment was produced. SAM2's region
+boxes are advisory context in the merged view; they never assert damage.
+Pricing has a SINGLE source — `cost_db.py` (underscore part keys); the backend and
+`sandbox.py` (dormant) both import it.
 
 ### Why This Architecture
 
@@ -81,12 +94,19 @@ processing requirement without flagging this.
 
 ## Stack — Confirmed and Frozen
 
+> **Mentor directive (current):** Qwen is the SOLE brain. No YOLO, no DINOv2 in the
+> decision path. Tools are free-form (the agent picks). Cost is computed in the
+> BACKEND from the agent's final JSON. SAM2 runs in the backend only, to render the
+> segmentation masks and the merged-union (VLM ∪ SAM2) boxes shown in the UI.
+
 | Layer | Technology | Notes |
 |---|---|---|
-| Damage detection | YOLOv8 (`ultralytics`) | `best.pt`, 6 classes |
-| Part segmentation | Grounding DINO + SAM2.1 | GDino SwinT + `sam2.1_hiera_base_plus.pt` |
-| Plate/RC detection | YOLOv8-based | In progress, not yet integrated |
-| VLM orchestrator | Qwen2-VL-7B-Instruct | Via `transformers` + `qwen-vl-utils` |
+| Damage detection + classification | `qwen3.5:9b` VLM brain | The VLM sees the image and reports damage_items (with bbox_pct). Sole perception. |
+| Repair cost | Backend Python | `lookup_cost()` over `COST_DB` — deterministic, NOT the LLM, NOT a sandbox. |
+| Segmentation masks + merged union | SAM2 (ultralytics, backend) | stock `sam2.1_b.pt`. UI-only: masks + VLM∪SAM2 boxes. No labels, not a decision tool. |
+| ~~Damage detection (trained)~~ | ~~YOLOv8 `best.pt`~~ | **RETIRED** → `models/_archive/best.pt` |
+| ~~Vehicle detect (YOLO) / DINOv2~~ | — | **Dropped from the path** (kept dormant on disk: `models/vehicle_detection/`, DINOv2 in `part_segmentation/infer.py`). |
+| VLM brain | `qwen3.5:9b` via Ollama | HTTP to `localhost:11434` (see `ollama_client.py`) |
 | Backend | FastAPI | Single app, not microservices |
 | Database | PostgreSQL | Local instance |
 | Image storage | Local filesystem | `outputs/`, not S3, not GCS |
@@ -271,9 +291,23 @@ entire loop.
 
 ```
 max_iterations = 6   ← hard cap, prevents infinite loops
-temperature = 0.1    ← near-greedy, deterministic enough for structured output
-max_new_tokens = 512 ← for tool call turns. Use 1024 for final synthesis turn only.
+max_new_tokens = 512 ← tool turns; 1024 for final synthesis
 ```
+
+**VLM sampling (Qwen3.5 "Best Practices", set in `configs/global_config.yaml` `vlm:`):**
+```
+thinking: false      ← CRITICAL. Thinking mode spends the whole num_predict budget
+                       on <think> and never emits the JSON action (empty content at
+                       the cap). Disabling it made run_damage_detection actually
+                       return detections and cut per-call latency ~2x.
+temperature: 0.7  top_p: 0.8  top_k: 20  presence_penalty: 1.5   ← instruct-mode set
+num_ctx: 8192        ← images cost ~1700 tok each; the default ~4096 ctx evicts the
+                       system prompt mid-run. Widen so multi-image history fits.
+```
+History must NOT contain thinking content (`pi_agent` appends `_strip_thinking(raw)`).
+`execute_cost_computation` is tolerant: if the model passes a damage list under any
+key (damage_items / items / damage_list / …) instead of `code`, or writes code that
+references undefined classes, it prices the items directly via `COST_DB`.
 
 If `max_iterations` is hit without a final answer, log a warning and return
 whatever partial state exists. Do not raise an exception — a partial report
@@ -407,7 +441,10 @@ storage:
 
 | Component | Status | Owner note |
 |---|---|---|
-| YOLOv8 damage detection | ✅ FROZEN | Do not retrain |
+| YOLOv8 damage detection (`best.pt`) | 🗄️ RETIRED | Archived → `models/_archive/best.pt`; replaced by VLM brain |
+| Stock YOLO vehicle detection | ✅ Built | `models/vehicle_detection/` — ROI only |
+| SAM2 + DINOv2 region segmentation | ✅ Built | `models/part_segmentation/` — class-agnostic regions |
+| Grounded-union merge | ✅ Built | `pi_agent._grounded_union` — evidence-tagged |
 | Git LFS + monorepo | ✅ Done | On `damage-detection` branch |
 | `ensure_weights()` guard | ✅ Done | In `app.py` |
 | Local batch pipeline | ✅ Done | Processes `examples/`, writes `outputs/` |
@@ -483,38 +520,24 @@ If a stakeholder asks for any of these, the answer is: post-MVP.
 
 ## System Prompt for VLM — Current Version
 
-Location: hardcoded string in `pipeline/orchestrator.py` as `SYSTEM_PROMPT`.
-Update it here when it changes so there is a tracked history.
+Location: the **live** brain prompt is `CODEACT_SYSTEM_PROMPT` in
+`models/vlm_reasoning/pi_agent.py`. A trimmed copy is also exported as
+`CODEACT_SYSTEM_PROMPT` from `pipeline/orchestrator.py` (imported by
+`scripts/sft_train.py`) — keep the two in sync, and update this section when
+either changes.
 
-```
-You are an expert vehicle damage assessment AI.
-You have access to computer vision tools. Use them to accurately assess damage.
-
-WORKFLOW:
-1. Examine the image with your vision first. Form an initial hypothesis.
-2. Call run_damage_detection to get precise damage locations and classes.
-3. Call run_part_segmentation to get vehicle part masks.
-4. Cross-reference damage locations with part locations to map damage to parts.
-5. Call execute_cost_computation with Python code that uses COST_DB to estimate
-   repair costs.
-6. Return a structured JSON report.
-
-COST COMPUTATION: Your code must set result = {
-    "damage_part_map": [{"damage": str, "part": str, "severity": str,
-                         "cost_min": int, "cost_max": int}],
-    "total_min": int,
-    "total_max": int,
-    "currency": "INR"
-}
-
-Always be conservative with severity.
-Only call tools you actually need.
-If part segmentation returns empty results, use your visual assessment of
-part locations from the image.
-If damage detection confidence is low on a region you visually assess as
-damaged, note it in warnings and include it in the report with lower
-confidence.
-```
+Key contract the prompt enforces (full text in `pi_agent.py`):
+- The VLM is the **brain** and classifies every damage itself from the pixels.
+- Tools are **free-form**: `run_damage_detection`, `zoom_region`, `detect_part` —
+  the agent calls any, in any order, any number of times, or none. NO fixed
+  workflow, NO forced confidence floor, NO cost step (the backend prices the result).
+- `Terminate` returns `damage_items` where each item has a `bbox_pct` (0–100) so the
+  backend can draw it and segment it.
+- Anti-hallucination: report only visually-confirmed damage; be conservative on
+  severity; Terminate with empty `damage_items` if nothing is visibly damaged.
+- Output is always a single CodeAct JSON object: `{thought, uncertainty, actions,
+  confidence}`. Thinking mode is OFF and `thought` must stay one short sentence
+  (long thoughts truncate the JSON at the token cap).
 
 ---
 

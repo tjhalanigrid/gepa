@@ -33,60 +33,11 @@ except Exception:  # pragma: no cover - import guard
     _HAS_MONTY = False
 
 # ── Pricing database — all values in INR ────────────────────────────────────
-# Structure: COST_DB[damage_class][part_label] = (min_cost, max_cost)
-# Part labels must match those returned by part_segmentation tool exactly.
-
-COST_DB: Dict[str, Dict[str, Tuple[int, int]]] = {
-    "dent": {
-        "front bumper":      (8000,  25000),
-        "rear bumper":       (8000,  25000),
-        "hood":              (12000, 35000),
-        "front_left_door":   (10000, 30000),
-        "front_right_door":  (10000, 30000),
-        "rear_left_door":    (10000, 30000),
-        "rear_right_door":   (10000, 30000),
-        "left fender":       (8000,  20000),
-        "right fender":      (8000,  20000),
-        "roof panel":        (15000, 45000),
-        "trunk lid":         (10000, 28000),
-    },
-    "scratch": {
-        "front bumper":      (3000,  8000),
-        "rear bumper":       (3000,  8000),
-        "hood":              (4000,  10000),
-        "front_left_door":   (3500,  9000),
-        "front_right_door":  (3500,  9000),
-        "rear_left_door":    (3500,  9000),
-        "rear_right_door":   (3500,  9000),
-        "left fender":       (3000,  7000),
-        "right fender":      (3000,  7000),
-        "roof panel":        (5000,  12000),
-        "trunk lid":         (3500,  9000),
-    },
-    "crack": {
-        "windshield":        (15000, 40000),
-        "rear windshield":   (12000, 35000),
-        "front bumper":      (5000,  15000),
-        "rear bumper":       (5000,  15000),
-    },
-    "glass_shatter": {
-        "windshield":        (20000, 55000),
-        "rear windshield":   (15000, 45000),
-        "headlight":         (8000,  20000),
-        "taillight":         (5000,  15000),
-        "front_left_door":   (10000, 25000),
-        "front_right_door":  (10000, 25000),
-        "rear_left_door":    (10000, 25000),
-        "rear_right_door":   (10000, 25000),
-    },
-    "lamp_broken": {
-        "headlight":         (10000, 28000),
-        "taillight":         (6000,  18000),
-    },
-    "tire_flat": {
-        "tire":              (4000,  12000),
-    },
-}
+# Single source of truth lives in cost_db.py (UNDERSCORE part keys). The sandbox
+# injects this exact dict, so the model's underscore part names (front_bumper,
+# right_fender, …) match by exact key. Do NOT redefine a second copy here — a
+# divergent duplicate is what caused every bumper/fender lookup to fall back.
+from models.vlm_reasoning.cost_db import COST_DB  # noqa: E402
 
 # ── Allowed identifiers in generated code ────────────────────────────────────
 

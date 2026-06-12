@@ -619,6 +619,11 @@ async def get_job_masked_image(job_id: str):
     annotated  = report.get("annotated_image_path", "")
     raw_dets   = report.get("detections_with_bbox", [])
 
+    # Fast path: the orchestrator already generated the SAM2 mask overlay this run.
+    pre = report.get("masked_image_path")
+    if pre and Path(pre).exists():
+        return FileResponse(pre, media_type="image/jpeg")
+
     if _sam_failed or not raw_dets:
         if annotated and Path(annotated).exists():
             return FileResponse(annotated, media_type="image/jpeg")
@@ -710,6 +715,42 @@ async def get_job_annotated_image(job_id: str):
         return FileResponse(image_path, media_type="image/jpeg")
 
     raise HTTPException(status_code=404, detail="No annotated image available")
+
+
+def _completed_report(job_id: str) -> dict:
+    """Return the FinalDamageReport dict for a completed job, or raise 404/400."""
+    if job_id not in _jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job = _jobs[job_id]
+    if job.get("status") != "complete":
+        raise HTTPException(status_code=400, detail="Job not complete yet")
+    result = job.get("result", {})
+    return result.get("report", result)
+
+
+@app.get("/job/{job_id}/merged_image")
+async def get_job_merged_image(job_id: str):
+    """Serves the merged-union (VLM ∪ SAM2) bbox image, source-coloured."""
+    report = _completed_report(job_id)
+    merged = report.get("merged_image_path")
+    if merged and Path(merged).exists():
+        return FileResponse(merged, media_type="image/jpeg")
+    # Fall back to the plain damage annotation if the merged image is missing.
+    annotated = report.get("annotated_image_path")
+    if annotated and Path(annotated).exists():
+        return FileResponse(annotated, media_type="image/jpeg")
+    raise HTTPException(status_code=404, detail="No merged image available")
+
+
+@app.get("/job/{job_id}/iterations")
+async def get_job_iterations(job_id: str):
+    """Returns the per-tool-call iteration log for the UI iteration-logs panel."""
+    report = _completed_report(job_id)
+    return {
+        "iterations":        report.get("iterations", []),
+        "merged_detections": report.get("merged_detections", []),
+        "approval_decision": report.get("approval_decision"),
+    }
 
 
 @app.post("/session/{session_id}/update_detections")

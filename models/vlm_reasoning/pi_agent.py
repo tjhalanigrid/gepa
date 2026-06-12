@@ -1,21 +1,19 @@
 """
 models/vlm_reasoning/pi_agent.py
 
-Pi-style recursive agentic loop for vehicle damage assessment.
+Free-form agentic loop for vehicle damage assessment.
 
-The VLM (qwen3.5:9b via Ollama) is the SOLE perception intelligence.
-All detection, part identification, severity reasoning, and depth estimation
-are done by the VLM directly seeing images. No YOLO, no SAM2, no GroundingDINO
-in the hot-path decision loop.
+The VLM (qwen3.5:9b via Ollama) is the SOLE brain — its own vision is the only
+perception. It owns all damage classification, part naming, and severity. It is
+given a few OPTIONAL vision aids and decides freely which to call, how many times,
+or whether to call any. Repair cost is NOT computed here — the backend prices the
+agent's final JSON deterministically (pipeline/orchestrator.py).
 
-Tool dispatch:
-  run_damage_detection   → VLM vision pass → JSON detections + annotated image
+Tool dispatch (free-form — no fixed order, no forced calls):
+  run_damage_detection   → VLM vision pass → JSON damage detections (bbox + class)
   zoom_region            → PIL crop/upscale → image fed back to VLM
   detect_part            → VLM targeted question → annotated image fed back
-  segment_damage         → SAM2 (if weights present) or PIL mask fallback
-  estimate_depth         → PIL luminance gradient heatmap → fed back to VLM
-  execute_cost_computation → Monty sandbox (unchanged) → cost dict as text
-  Terminate              → extract final damage_items, exit loop
+  Terminate              → extract final damage_items (with bbox_pct), exit loop
 
 Recursion contract:
   max_iterations = 6   (hard cap, no infinite loops)
@@ -38,7 +36,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 from models.vlm_reasoning.ollama_client import chat as ollama_chat, encode_image
-from models.vlm_reasoning.sandbox import execute_sandboxed
 from pipeline.schema import CodeActTurn, CodeActAction, TrajectoryStep
 
 logger = logging.getLogger(__name__)
@@ -58,8 +55,7 @@ VALID_PARTS = frozenset({
 VALID_SEVERITY = frozenset({"minor", "moderate", "severe"})
 
 _CANONICAL_TOOLS = frozenset({
-    "run_damage_detection", "zoom_region", "detect_part",
-    "segment_damage", "estimate_depth", "execute_cost_computation", "Terminate",
+    "run_damage_detection", "zoom_region", "detect_part", "Terminate",
 })
 _CANONICAL_TOOL_LOOKUP = {t.lower().replace(" ", "_"): t for t in _CANONICAL_TOOLS}
 
@@ -78,17 +74,23 @@ _DEFAULT_COLOR_RGB: Tuple[int, int, int] = (128, 128, 128)
 # ── System prompt (CODEACT mode) ──────────────────────────────────────────────
 
 CODEACT_SYSTEM_PROMPT = """\
-You are an expert vehicle damage assessment AI.
-You are the SOLE intelligence in this system — your vision is the only perception tool.
-No other CV models exist. You see the raw vehicle image and decide which tools to call.
+You are an expert vehicle damage assessment AI — the sole reasoning BRAIN.
+Your own vision is the only perception. You decide what damage exists, which part
+it is on, and how severe it is, entirely from the pixels you see.
+
+You are given a few optional tools. It is ENTIRELY UP TO YOU which to use, how many
+times, in what order, or whether to use any at all. There is no required sequence.
+When you are confident in what you see, call Terminate. Repair cost is computed
+afterwards by the system — you do NOT compute cost.
 
 ══════════════════════════════════════════════════════════
 MANDATORY OUTPUT FORMAT — EVERY SINGLE RESPONSE MUST BE:
 ══════════════════════════════════════════════════════════
 Exactly ONE JSON object. No markdown. No preamble. No text outside this JSON.
+Keep "thought" to ONE short sentence (a long thought truncates the JSON and fails).
 
 {
-  "thought": "what you see and what you plan to do next",
+  "thought": "one short sentence",
   "uncertainty": ["any open questions; empty list [] if none"],
   "actions": [
     {"name": "TOOL_NAME", "arguments": {...}}
@@ -97,76 +99,48 @@ Exactly ONE JSON object. No markdown. No preamble. No text outside this JSON.
 }
 ══════════════════════════════════════════════════════════
 
-TOOLS YOU CAN CALL:
+OPTIONAL TOOLS (use any, none, or repeat — your choice):
 
 • run_damage_detection
-  Use your vision to locate and classify ALL damage in the image.
-  Returns a structured JSON detection list + an annotated image with coloured boxes.
+  Use YOUR OWN vision to locate and classify all damage you can see. Returns your
+  structured detection list (each with a bbox) + an annotated image.
   arguments: {"reason": "why you are calling this"}
 
 • zoom_region
-  Crop and magnify a specific image region for close inspection.
-  Use when a damage region is too small or unclear to classify from the full image.
+  Crop and magnify a region for a closer look before committing to a label.
   arguments: {"bbox": [x1, y1, x2, y2], "reason": "what you cannot determine"}
   Note: bbox values are PIXEL coordinates in the original image.
 
 • detect_part
-  Ask your vision to pinpoint a specific vehicle part.
-  Use when you cannot confidently identify which part is damaged.
+  Ask your vision to pinpoint a specific vehicle part you are unsure about.
   arguments: {"part_query": "e.g. left headlight", "reason": "why you are unsure"}
 
-• segment_damage
-  Generate a precise segmentation mask over a damage region.
-  Use when you need exact damage boundaries to judge severity (minor vs severe).
-  arguments: {"bbox": [x1, y1, x2, y2], "reason": "what severity question this resolves"}
-
-• estimate_depth
-  Generate a luminance-based deformation heatmap of the entire image.
-  RED = high-gradient regions (pushed-in / deformed panels).
-  BLUE = smooth flat surfaces.
-  Use when judging structural vs surface-only damage.
-  arguments: {"reason": "why depth information is needed"}
-
-• execute_cost_computation
-  Execute Python code in a SECURE Monty sandbox to compute repair costs.
-  Available variable: COST_DB[damage_class][part_label] = (cost_min_INR, cost_max_INR)
-  Unknown (damage, part) pairs → use (3000, 8000) as fallback.
-
-  COPY THIS TEMPLATE EXACTLY — only edit the `items` list:
-    items = [
-        {"damage": "dent",    "part": "front_bumper", "severity": "moderate"},
-        {"damage": "scratch", "part": "hood",         "severity": "minor"},
-    ]
-    result = {"damage_part_map": [], "total_min": 0, "total_max": 0, "currency": "INR"}
-    for d in items:
-        lo, hi = COST_DB.get(d["damage"], {}).get(d["part"], (3000, 8000))
-        result["damage_part_map"].append({**d, "cost_min": lo, "cost_max": hi})
-        result["total_min"] += lo
-        result["total_max"] += hi
-
-  arguments: {"code": "<python code as a single string>"}
-
 • Terminate
-  End the assessment loop and return your final findings.
-  ONLY call when ALL of these are true:
-    1. You have called execute_cost_computation and it returned a valid result.
-    2. confidence >= 0.70
-    3. uncertainty == []
+  End and return your final findings.
+  Each damage_item MUST include a bbox_pct (percentage coords 0–100) so the system
+  can draw it and segment it.
   arguments: {
     "damage_items": [
-      {"damage_type": "dent", "part": "front_bumper", "severity": "moderate", "confidence": 0.85}
+      {"damage_type": "dent", "part": "front_bumper", "severity": "moderate",
+       "confidence": 0.85, "bbox_pct": [10, 20, 40, 60]}
     ]
   }
 
-RECOMMENDED WORKFLOW:
-  1. Look at the raw image → form initial hypothesis in "thought"
-  2. Call run_damage_detection → read the annotated image + detection list
-  3. For regions where confidence < 0.60 or severity is unclear:
-       → call zoom_region or segment_damage
-  4. If the affected part is uncertain → call detect_part
-  5. If panel may be structurally deformed (not just surface) → call estimate_depth
-  6. Call execute_cost_computation with ALL confirmed damage items (use the template)
-  7. Call Terminate with the final verified damage_items list
+VERIFY BEFORE YOU FINISH (do not just detect-then-terminate):
+  • After run_damage_detection, look at each damage you found. For any that is
+    small, faint, partially hidden, or whose SEVERITY or CLASS you are not sure of,
+    call zoom_region on it and look closer before you decide. Resolve your
+    uncertainty list — don't guess.
+  • If you are unsure WHICH part a damage is on, call detect_part.
+  • Only call Terminate once you have actually inspected the uncertain damages.
+    A confident single-pass result is fine for clear, obvious damage — but do not
+    terminate by reflex when something needs a closer look.
+
+ANTI-HALLUCINATION RULES:
+  • Report only damage you can visually confirm on the pixels — never assume.
+  • Before asserting a damage you are unsure of, zoom into it first.
+  • Be conservative on severity. When unsure, prefer the lower severity.
+  • If the vehicle has no visible damage, Terminate with an empty damage_items list.
 
 Valid damage_type: dent | scratch | crack | glass_shatter | lamp_broken | tire_flat
 Valid part:        front_bumper | rear_bumper | hood | windshield | rear_windshield |
@@ -201,7 +175,8 @@ Respond with ONLY this JSON (no markdown, no preamble):
 Field rules:
   class      → one of: dent | scratch | crack | glass_shatter | lamp_broken | tire_flat
   confidence → your visual certainty 0.0–1.0
-  bbox_pct   → [x1, y1, x2, y2] as image PERCENTAGE coordinates 0–100
+  bbox_pct   → [x1, y1, x2, y2] as image PERCENTAGE coordinates 0–100, where
+               x1,y1 = TOP-LEFT corner and x2,y2 = BOTTOM-RIGHT corner.
   part       → one of: front_bumper | rear_bumper | hood | windshield | rear_windshield |
                front_left_door | front_right_door | rear_left_door | rear_right_door |
                left_fender | right_fender | trunk_lid | roof_panel |
@@ -209,6 +184,15 @@ Field rules:
   severity   → minor (surface only) | moderate (panel deformation, repair needed) |
                severe (structural damage, replacement needed)
   description → one-sentence visual description of what you see
+
+BOUNDING-BOX ACCURACY — this matters a lot:
+  • The box must TIGHTLY hug ONLY the damaged area — like shrink-wrap. Do NOT draw a
+    big loose box around the whole panel or the whole car.
+  • Each damage gets its OWN distinct box at its OWN location. Do not stack several
+    near-identical boxes in one spot.
+  • The box must be ON THE CAR, over the damage. Never put it on the road, sky,
+    background, or empty space beside the car.
+  • Sanity-check: x1 < x2 and y1 < y2, and the centre of the box sits on the damage.
 
 If no damage is visible: {"detections": []}"""
 
@@ -359,51 +343,22 @@ def _enforce_turn_policy(
     turn: CodeActTurn,
     iteration: int,
     tool_calls_made: int,
-    cost_result: Optional[dict],
 ) -> Tuple[bool, str]:
     """
     Validate a parsed CodeActTurn before executing it.
 
-    Returns (is_valid, rejection_reason).
-    Rejection reason is injected back into the conversation as a corrective user message.
+    FREE-FORM: the agent decides which tools to call, how many times, or none.
+    We do NOT force a workflow, a minimum tool count, a confidence floor, or a
+    cost step. We only check structural validity (valid tool names) and the
+    final-output vocabulary on Terminate. Returns (is_valid, rejection_reason).
     """
     actions = turn.actions
     is_terminate = any(a.name == "Terminate" for a in actions)
 
     if is_terminate:
-        conf = turn.confidence or 0.0
-
-        # Allow high-confidence pure-visual assessment without prior tool call
-        if tool_calls_made == 0 and iteration == 0 and conf < 0.70:
-            return False, (
-                "You terminated immediately with low confidence and no tool calls. "
-                "Call run_damage_detection first to gather evidence, then Terminate."
-            )
-        if conf < 0.70:
-            return False, (
-                f"Confidence {conf:.2f} is below the required 0.70. "
-                f"Resolve these uncertainties first: {turn.uncertainty}"
-            )
-        if turn.uncertainty:
-            return False, (
-                f"You have {len(turn.uncertainty)} unresolved uncertainties: "
-                f"{turn.uncertainty}. "
-                "Call zoom_region, detect_part, or segment_damage to resolve them."
-            )
-        if cost_result is None:
-            return False, (
-                "You must call execute_cost_computation before Terminate. "
-                "Use the mandatory template from the system prompt."
-            )
-
         term_action = next(a for a in actions if a.name == "Terminate")
         items = term_action.arguments.get("damage_items", [])
-
-        if not items and conf < 0.90:
-            return False, (
-                "Terminate requires at least one damage_item, or confidence >= 0.90 "
-                "if you are certain the vehicle has no damage."
-            )
+        # Empty damage_items is allowed (a genuine "no visible damage" verdict).
         for item in items:
             if item.get("damage_type") not in VALID_DAMAGE_CLASSES:
                 return False, (
@@ -420,7 +375,6 @@ def _enforce_turn_policy(
                     f"Invalid severity: '{item.get('severity')}'. "
                     "Must be: minor | moderate | severe"
                 )
-
     else:
         if not actions:
             return False, (
@@ -702,13 +656,27 @@ class PiAgent:
         self.vlm_cfg     = config.get("vlm", {})
         self.model       = self.vlm_cfg.get("model_id", "qwen3.5:9b")
         self.base_url    = self.vlm_cfg.get("ollama_base_url", "http://localhost:11434")
-        self.temperature = float(self.vlm_cfg.get("temperature", 0.1))
+        self.temperature = float(self.vlm_cfg.get("temperature", 0.7))
+        # Qwen3.5 best-practices sampling (instruct / non-thinking mode). Thinking
+        # mode is disabled: it spends the whole token budget on <think> and never
+        # emits the JSON action (confirmed empty-content truncation at num_predict).
+        self.think       = bool(self.vlm_cfg.get("thinking", False))
+        self.top_p       = self.vlm_cfg.get("top_p", 0.8)
+        self.top_k       = self.vlm_cfg.get("top_k", 20)
+        self.presence_penalty = self.vlm_cfg.get("presence_penalty", 1.5)
+        self.num_ctx     = int(self.vlm_cfg.get("num_ctx", 8192))
         self.max_iter    = int(self.vlm_cfg.get("max_iterations", 6))
         self.max_retry   = int(self.vlm_cfg.get("codeact_max_retries", 2))
         self.max_dim     = int(self.vlm_cfg.get("image_max_dim", 640))
-        self.engine      = self.vlm_cfg.get("sandbox_engine", "monty")
-        self.max_tok_tool  = int(self.vlm_cfg.get("max_new_tokens_tool", 512))
+        # The damage-detection pass is a single call (not multi-turn), so we can
+        # afford a higher-resolution image there — it markedly improves bbox
+        # localization (640px is too coarse to place tight boxes on the damage).
+        self.detect_dim  = int(self.vlm_cfg.get("image_detect_dim", 1024))
+        self.max_tok_tool  = int(self.vlm_cfg.get("max_new_tokens_tool", 1024))
         self.max_tok_final = int(self.vlm_cfg.get("max_new_tokens_final", 1024))
+        # The VLM's own damage detections from run_damage_detection (for the UI
+        # annotation + the approval corroboration check).
+        self._vlm_detections: List[dict] = []
 
     # ── Public entry point ────────────────────────────────────────────────────
 
@@ -729,10 +697,11 @@ class PiAgent:
         """
         warnings: List[str] = []
         tool_calls          = 0
-        cost_result: Optional[dict] = None
-        yolo_detections: List[dict] = []   # renamed for compat; contains VLM detections
         annotated_path: Optional[str] = None
         last_raw: Optional[str] = None
+
+        # Reset per-run VLM damage detections (used for approval corroboration).
+        self._vlm_detections = []
 
         # Resize for VLM; tool helpers use the ORIGINAL full-res image path
         vlm_img_path = _resize_for_vlm(image_path, self.max_dim)
@@ -749,10 +718,9 @@ class PiAgent:
             {
                 "role": "user",
                 "content": (
-                    "Assess all visible damage on this vehicle. "
-                    "Call your tools to inspect the damage, compute repair cost with "
-                    "execute_cost_computation, then call Terminate. "
-                    "Output ONLY the JSON object."
+                    "Assess all visible damage on this vehicle. Use any tools you "
+                    "want (or none), then call Terminate with your final damage_items "
+                    "(each with a bbox_pct). Output ONLY the JSON object."
                 ),
                 "images": [initial_b64],
             },
@@ -805,7 +773,7 @@ class PiAgent:
 
                 _canonicalize_action_names(turn)
                 valid, reject_reason = _enforce_turn_policy(
-                    turn, iteration, tool_calls, cost_result
+                    turn, iteration, tool_calls
                 )
 
                 if not valid:
@@ -830,8 +798,10 @@ class PiAgent:
             if turn.uncertainty:
                 logger.info(f"[iter {iteration}] uncertainty: {turn.uncertainty}")
 
-            # Append assistant reasoning to conversation history
-            messages.append({"role": "assistant", "content": last_raw})
+            # Append assistant reasoning to conversation history.
+            # Qwen3.5 best practice: history must NOT contain thinking content, and
+            # keeping raw blocks bloats prompt_tokens every turn — strip before storing.
+            messages.append({"role": "assistant", "content": _strip_thinking(last_raw)})
 
             # Execute all actions in this turn
             for action in turn.actions:
@@ -852,8 +822,7 @@ class PiAgent:
                     )
                     return {
                         "damage_items":         damage_items,
-                        "cost_result":          cost_result,
-                        "yolo_detections":      yolo_detections,
+                        "vlm_detections":       self._vlm_detections,
                         "annotated_image_path": annotated_path,
                         "tool_calls":           tool_calls,
                         "warnings":             warnings,
@@ -883,12 +852,11 @@ class PiAgent:
                     elapsed_s=elapsed,
                 ))
 
-                # Side-channel capture (for dashboard annotation UI)
+                # Side-channel capture: the VLM's own damage detections (for the
+                # annotation UI and the approval corroboration check).
                 if action.name == "run_damage_detection" and result["type"] == "image":
-                    yolo_detections = result.get("detections", yolo_detections)
+                    self._vlm_detections = result.get("detections", self._vlm_detections)
                     annotated_path  = result.get("image_path", annotated_path)
-                if action.name == "execute_cost_computation" and result["type"] == "json":
-                    cost_result = result.get("data", cost_result)
 
                 # Append observation to conversation (image or text)
                 self._append_observation(messages, action, result)
@@ -898,8 +866,7 @@ class PiAgent:
         )
         return {
             "damage_items":         [],
-            "cost_result":          cost_result,
-            "yolo_detections":      yolo_detections,
+            "vlm_detections":       self._vlm_detections,
             "annotated_image_path": annotated_path,
             "tool_calls":           tool_calls,
             "warnings":             warnings,
@@ -909,13 +876,18 @@ class PiAgent:
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _call_model(self, messages: List[dict], max_tokens: int = 512) -> str:
-        """Forward messages to Ollama and return the raw content string."""
+        """Forward messages to Ollama and return the content string (thinking disabled)."""
         return ollama_chat(
             messages=messages,
             model=self.model,
             base_url=self.base_url,
             temperature=self.temperature,
             num_predict=max_tokens,
+            think=self.think,
+            top_p=self.top_p,
+            top_k=self.top_k,
+            presence_penalty=self.presence_penalty,
+            num_ctx=self.num_ctx,
         )
 
     def _append_observation(
@@ -941,16 +913,20 @@ class PiAgent:
                     obs_text = (
                         f"run_damage_detection result: {result.get('summary','')}\n"
                         f"{det_lines}\n\n"
-                        "The annotated image shows numbered detection boxes. "
-                        "Inspect uncertain areas with zoom_region or segment_damage. "
-                        "Then call execute_cost_computation and Terminate."
+                        "The annotated image shows numbered detection boxes. For ANY box "
+                        "above that is small, faint, or whose severity/class you are not "
+                        "sure of, call zoom_region on it now and look closer before you "
+                        "finish (use detect_part if unsure which part). Only when you have "
+                        "verified the uncertain ones, call Terminate with all damage_items "
+                        "(each with a bbox_pct). The system computes cost afterwards."
                     )
                 else:
                     obs_text = (
                         f"run_damage_detection result: {result.get('summary','')}\n"
-                        "No damage detected above threshold. "
-                        "Visually inspect the image. If you see damage, include it in Terminate. "
-                        "Still call execute_cost_computation before Terminate."
+                        "No damage detected. Look again carefully — zoom_region into any "
+                        "area that might hide damage. If you confirm damage, Terminate with "
+                        "it (bbox_pct each); if there is truly none, Terminate with an empty "
+                        "damage_items list."
                     )
             else:
                 obs_text = (
@@ -1026,55 +1002,6 @@ class PiAgent:
                     "summary": f"Part detection: '{query}'",
                 }
 
-            elif name == "segment_damage":
-                bbox = args.get("bbox", [])
-                if len(bbox) != 4:
-                    return {
-                        "type": "error",
-                        "error": "segment_damage requires bbox [x1,y1,x2,y2]",
-                        "summary": "missing bbox argument",
-                    }
-                out = _segment_damage(image_path, bbox, self.config)
-                return {
-                    "type": "image",
-                    "image_path": out,
-                    "summary": f"Segmented damage region {[int(v) for v in bbox]}",
-                }
-
-            elif name == "estimate_depth":
-                out = _estimate_depth_map(image_path)
-                return {
-                    "type": "image",
-                    "image_path": out,
-                    "summary": "Deformation heatmap: red=pushed-in, blue=flat",
-                }
-
-            elif name == "execute_cost_computation":
-                code = str(args.get("code", "")).strip()
-                if not code:
-                    return {
-                        "type": "error",
-                        "error": "execute_cost_computation requires non-empty 'code' argument",
-                        "summary": "no code provided",
-                    }
-                sandbox_out = execute_sandboxed(code, engine=self.engine)
-                if "error" in sandbox_out:
-                    return {
-                        "type": "error",
-                        "error": sandbox_out["error"],
-                        "summary": f"Sandbox rejected code: {sandbox_out['error']}",
-                    }
-                cr = sandbox_out["result"]
-                n  = len(cr.get("damage_part_map", []))
-                return {
-                    "type": "json",
-                    "data": cr,
-                    "summary": (
-                        f"Cost computed: {n} item(s), "
-                        f"total INR {cr.get('total_min',0):,}–{cr.get('total_max',0):,}"
-                    ),
-                }
-
             else:
                 return {
                     "type": "error",
@@ -1100,7 +1027,8 @@ class PiAgent:
         parses the JSON response, converts bbox_pct to pixel coords, draws
         coloured numbered boxes, and returns the annotated image + structured list.
         """
-        vlm_path = _resize_for_vlm(image_path, self.max_dim)
+        # Higher resolution for this single call → tighter, better-placed boxes.
+        vlm_path = _resize_for_vlm(image_path, self.detect_dim)
         b64      = encode_image(vlm_path)
 
         messages = [
@@ -1160,10 +1088,18 @@ class PiAgent:
         except Exception:
             img_w, img_h = 640, 480
 
-        # Build structured detections with pixel bboxes
+        # Build structured detections with pixel bboxes.
+        # Small VLMs frequently emit bbox_pct values outside 0–100 (we have seen
+        # 700+), which would explode into off-image pixels — clamp to [0,100].
         structured: List[dict] = []
         for d in valid_dets:
-            bpct = d.get("bbox_pct", [5, 5, 95, 95])
+            raw_bpct = d.get("bbox_pct", [5, 5, 95, 95])
+            try:
+                bpct = [max(0.0, min(100.0, float(v))) for v in raw_bpct[:4]]
+                if len(bpct) != 4:
+                    bpct = [5, 5, 95, 95]
+            except Exception:
+                bpct = [5, 5, 95, 95]
             bbox_px = [
                 int(bpct[0] / 100.0 * img_w),
                 int(bpct[1] / 100.0 * img_h),

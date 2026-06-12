@@ -27,6 +27,11 @@ DEFAULT_MASK_COLOR = (128, 128, 128)
 
 
 def _load_sam(weights_path: str) -> bool:
+    """
+    Load SAM2 via ultralytics (the same backend models/part_segmentation uses).
+    The previous facebook `sam2` package is not installed on this stack — using
+    ultralytics keeps a single SAM2 dependency and the stock sam2.1_b.pt weight.
+    """
     global _sam_model, _sam_loaded, _sam_failed
     if _sam_loaded:
         return True
@@ -35,60 +40,66 @@ def _load_sam(weights_path: str) -> bool:
 
     search_paths = [
         weights_path,
+        "models/damage_detection/models/sam2.1_b.pt",   # stock ultralytics SAM2 base
         "weights/sam2.1_hiera_base_plus.pt",
-        "weights/sam2.1_hiera_base_plus.pth",
-        "weights/sam2_hiera_base_plus.pt",
-        "/tmp/partseg_deps.ZohiE5/sam2/checkpoints/sam2.1_hiera_base_plus.pt",
     ]
 
-    found_path = None
-    for p in search_paths:
-        if Path(p).exists():
-            found_path = p
-            logger.info(f"SAM2 weights found at: {found_path}")
-            break
-
+    found_path = next((p for p in search_paths if p and Path(p).exists()), None)
     if not found_path:
         logger.warning(
             f"SAM2 weights not found. Searched: {search_paths}. "
-            "Run: python3 scripts/download_sam2_weights.py"
+            "Mask overlay will use the bbox/GrabCut fallback."
         )
         _sam_failed = True
         return False
 
     try:
-        import torch
-        from sam2.build_sam import build_sam2
-        from sam2.sam2_image_predictor import SAM2ImagePredictor
-
-        device = "mps" if torch.backends.mps.is_available() else "cpu"
-
-        config_candidates = [
-            "sam2_hiera_base_plus.yaml",
-            "sam2/configs/sam2/sam2_hiera_base_plus.yaml",
-        ]
-        config_path = "sam2_hiera_base_plus.yaml"
-        for c in config_candidates:
-            if Path(c).exists():
-                config_path = c
-                break
-
-        sam2_model = build_sam2(config_path, found_path, device=device)
-        _sam_model  = SAM2ImagePredictor(sam2_model)
+        from ultralytics import SAM
+        _sam_model  = SAM(found_path)
         _sam_loaded = True
-        logger.info(f"SAM2 loaded on {device}")
+        logger.info(f"SAM2 (ultralytics) loaded from {found_path}")
         return True
-
     except Exception as e:
         logger.warning(f"SAM2 load failed: {e} — mask overlay will use bbox fallback")
         _sam_failed = True
         return False
 
 
+def _sam_masks_for_boxes(image_path: str, boxes: list, h: int, w: int) -> dict:
+    """
+    Run ultralytics SAM2 once for all boxes; return {box_index: bool_mask(h,w)}.
+    Uses polygon output (.xy is in original-image coords) filled into a mask, so
+    the result aligns with the original frame regardless of letterboxing.
+    """
+    import cv2
+
+    out: dict = {}
+    if not boxes:
+        return out
+    try:
+        results = _sam_model(image_path, bboxes=boxes, verbose=False)
+    except Exception as e:
+        logger.warning(f"SAM2 batch predict failed: {e}")
+        return out
+    if not results or results[0].masks is None or results[0].masks.xy is None:
+        return out
+
+    polys = results[0].masks.xy
+    for i in range(min(len(polys), len(boxes))):
+        poly = polys[i]
+        if poly is None or len(poly) < 3:
+            continue
+        m = np.zeros((h, w), np.uint8)
+        cv2.fillPoly(m, [poly.astype(np.int32)], 1)
+        if m.sum() > 0:
+            out[i] = m.astype(bool)
+    return out
+
+
 def generate_masked_image(
     image_path: str,
     detections: list,
-    weights_path: str = "weights/sam2.1_hiera_base_plus.pt",
+    weights_path: str = "models/damage_detection/models/sam2.1_b.pt",
     output_dir: str = "data/uploads/masked",
     alpha: float = 0.45,
 ) -> str:
@@ -112,15 +123,26 @@ def generate_masked_image(
 
     sam_ok = _load_sam(weights_path)
 
+    # Run SAM2 (ultralytics) once for all valid boxes; map back to each detection.
+    sam_masks: dict = {}
     if sam_ok:
-        try:
-            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-            _sam_model.set_image(img_rgb)
-        except Exception as e:
-            logger.warning(f"SAM2 set_image failed: {e}")
-            sam_ok = False
+        boxes, det_of_box = [], []
+        for di, det in enumerate(detections):
+            bb = _get_bbox(det)
+            if all(v == 0 for v in bb):
+                continue
+            bx1, by1 = max(0, int(bb[0])), max(0, int(bb[1]))
+            bx2, by2 = min(w, int(bb[2])), min(h, int(bb[3]))
+            if bx2 <= bx1 or by2 <= by1:
+                continue
+            boxes.append([bx1, by1, bx2, by2])
+            det_of_box.append(di)
+        box_masks = _sam_masks_for_boxes(image_path, boxes, h, w)
+        for bi, di in enumerate(det_of_box):
+            if bi in box_masks:
+                sam_masks[di] = box_masks[bi]
 
-    for det in detections:
+    for di, det in enumerate(detections):
         bbox  = _get_bbox(det)
         cls   = _get_field(det, "damage", "dent")
         idx   = _get_field(det, "index", 0)
@@ -138,23 +160,18 @@ def generate_masked_image(
             continue
 
         mask_drawn = False
-        if sam_ok:
+        mask = sam_masks.get(di)
+        if mask is not None:
             try:
-                masks, scores, _ = _sam_model.predict(
-                    box=np.array([[x1, y1, x2, y2]]),
-                    multimask_output=False,
-                )
-                if masks is not None and len(masks) > 0:
-                    mask = masks[0].astype(bool)
-                    colored = np.zeros_like(img_bgr, dtype=np.float32)
-                    colored[mask] = bgr
-                    overlay[mask] = overlay[mask] * (1 - alpha) + colored[mask] * alpha
-                    mask_u8 = mask.astype(np.uint8) * 255
-                    contours, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    cv2.drawContours(overlay.astype(np.uint8), contours, -1, bgr, 2)
-                    mask_drawn = True
+                colored = np.zeros_like(img_bgr, dtype=np.float32)
+                colored[mask] = bgr
+                overlay[mask] = overlay[mask] * (1 - alpha) + colored[mask] * alpha
+                mask_u8 = mask.astype(np.uint8) * 255
+                contours, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                cv2.drawContours(overlay.astype(np.uint8), contours, -1, bgr, 2)
+                mask_drawn = True
             except Exception as e:
-                logger.warning(f"SAM2 predict failed for detection {idx}: {e}")
+                logger.warning(f"SAM2 mask overlay failed for detection {idx}: {e}")
 
         if not mask_drawn:
             # Fallback: GrabCut segments actual damage shape within bbox.
