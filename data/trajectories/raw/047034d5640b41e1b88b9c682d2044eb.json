@@ -1,0 +1,16 @@
+{
+  "trajectory_id": "047034d5640b41e1b88b9c682d2044eb",
+  "image_path": "/Users/msreeja/Desktop/final project/veh_dmg_detection/data/uploads/42e80477efa646de9942c83c89ea9389.jpg",
+  "image_width": 1000,
+  "image_height": 667,
+  "created_at": "2026-06-13T13:22:47.512911+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [],
+  "final_damage_map": [],
+  "total_min": 0,
+  "total_max": 0,
+  "total_elapsed_s": 22.49,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

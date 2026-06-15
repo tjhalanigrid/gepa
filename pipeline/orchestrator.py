@@ -271,6 +271,74 @@ def _sam2_damage(image_path: str, detections: list, config: dict):
         return [], None
 
 
+def _sam2_masked_overlay(image_path: str, merged: list, config: dict):
+    """
+    Draw the SAM2 mask overlay PROMPTED BY THE MERGED (VLM ∪ SAM2) boxes, so the
+    masks line up with the boxes shown in the "Merged" view. The merged set holds
+    both each VLM box and its derived SAM2 tight box, so we dedupe by IoU —
+    preferring the tighter SAM2 box — to avoid double-blending the same region.
+    Returns the overlay path, or None on failure (caller falls back).
+    """
+    # Dedupe: SAM2 (tight) boxes first, then any VLM box SAM2 did not confirm.
+    ordered = [m for m in merged if m.get("source") == "sam2"] + \
+              [m for m in merged if m.get("source") != "sam2"]
+    chosen = []
+    for m in ordered:
+        bb = [int(v) for v in m["bbox"]]
+        if all(v == 0 for v in bb):
+            continue
+        if any(_iou([float(v) for v in bb], [float(v) for v in c["bbox"]]) >= 0.5 for c in chosen):
+            continue
+        chosen.append({"bbox": bb, "damage": m.get("damage", "")})
+    if not chosen:
+        return None
+
+    sam_cfg = config.get("part_segmentation", {}).get("sam2", {})
+    weights = sam_cfg.get("weights_path", "models/damage_detection/models/sam2.1_b.pt")
+    try:
+        import cv2
+        import numpy as np
+        from shared.sam_mask import (
+            _load_sam, _sam_masks_for_boxes, DAMAGE_MASK_COLORS, DEFAULT_MASK_COLOR,
+        )
+
+        if not _load_sam(weights):
+            return None
+        img = cv2.imread(image_path)
+        if img is None:
+            return None
+        h, w = img.shape[:2]
+        masks = _sam_masks_for_boxes(image_path, [c["bbox"] for c in chosen], h, w)
+
+        overlay = img.copy().astype(np.float32)
+        drew = False
+        for i, c in enumerate(chosen):
+            m = masks.get(i)
+            if m is None:
+                continue
+            ys, xs = np.where(m)
+            if len(xs) == 0:
+                continue
+            rgb = DAMAGE_MASK_COLORS.get(c["damage"], DEFAULT_MASK_COLOR)
+            bgr = np.array([rgb[2], rgb[1], rgb[0]], dtype=np.float32)
+            overlay[m] = overlay[m] * 0.5 + bgr * 0.5
+            cont, _ = cv2.findContours(m.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(overlay, cont, -1, tuple(int(c2) for c2 in bgr), 2)
+            drew = True
+
+        if not drew:
+            return None
+        out_dir = Path("data/uploads/masked")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out = str(out_dir / f"{Path(image_path).stem}_masked_merged_{uuid.uuid4().hex[:6]}.jpg")
+        cv2.imwrite(out, overlay.astype(np.uint8))
+        logger.info(f"SAM2 mask overlay drawn from {len(chosen)} merged (VLM∪SAM2) box(es)")
+        return out
+    except Exception as e:
+        logger.warning(f"SAM2 merged-box overlay failed: {e} — keeping VLM-prompted overlay")
+        return None
+
+
 def _merge_union(detections_with_bbox: list, sam2_boxes: list) -> list:
     """
     Merge the VLM damage boxes with the SAM2 tight mask boxes (which were derived
@@ -438,8 +506,11 @@ def run(
     # ── Stage 4: SAM2 (backend, prompted by VLM boxes) + merged union ──────────
     # SAM2 is prompted by the VLM damage boxes, so it segments ONLY real damage
     # regions — never the background (no "segment-everything" hallucination).
-    sam2_boxes, masked_image_path = _sam2_damage(image_path, detections_with_bbox, config)
+    sam2_boxes, vlm_masked_path = _sam2_damage(image_path, detections_with_bbox, config)
     merged = _merge_union(detections_with_bbox, sam2_boxes)
+    # SAM2 mask overlay is prompted by the MERGED (VLM ∪ SAM2) boxes so the masks
+    # match the merged view; fall back to the VLM-prompted overlay if that fails.
+    masked_image_path = _sam2_masked_overlay(image_path, merged, config) or vlm_masked_path
     n_both = sum(1 for m in merged if m["source"] == "both")
     logger.info(
         f"Merged union: {len(detections_with_bbox)} VLM box(es) + "
