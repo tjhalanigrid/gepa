@@ -109,7 +109,9 @@ OPTIONAL TOOLS (use any, none, or repeat — your choice):
 • zoom_region
   Crop and magnify a region for a closer look before committing to a label.
   arguments: {"bbox": [x1, y1, x2, y2], "reason": "what you cannot determine"}
-  Note: bbox values are PIXEL coordinates in the original image.
+  Note: bbox values are PERCENTAGE coordinates (0–100), matching the bbox_pct
+  format from run_damage_detection. Do NOT use [0,0,100,100] — that is the
+  whole image and not a useful zoom. Zoom into a specific damaged sub-region.
 
 • detect_part
   Ask your vision to pinpoint a specific vehicle part you are unsure about.
@@ -743,6 +745,19 @@ class PiAgent:
 
             turn: Optional[CodeActTurn] = None
 
+            # Penultimate iteration: remind the VLM it must Terminate soon.
+            if iteration == self.max_iter - 2:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"⚠ You have {self.max_iter - iteration} iterations left. "
+                        "You MUST call Terminate in this response or the next one. "
+                        "Include every damage you have confirmed so far, each with "
+                        "its bbox_pct. Do not call zoom_region again unless absolutely "
+                        "necessary — resolve your uncertainty and terminate."
+                    ),
+                })
+
             # Inner retry loop: JSON parse / policy violation recovery
             for attempt in range(self.max_retry + 1):
                 try:
@@ -780,7 +795,13 @@ class PiAgent:
                     if attempt < self.max_retry:
                         messages.append({
                             "role": "user",
-                            "content": f"Policy violation: {reject_reason} Try again.",
+                            "content": (
+                                f"Policy violation: {reject_reason} "
+                                "Your JSON MUST include at least one action. "
+                                "Either call a tool (run_damage_detection / zoom_region / detect_part) "
+                                "OR call Terminate with your damage_items list. "
+                                "OUTPUT ONLY THE JSON OBJECT — no text, no markdown."
+                            ),
                         })
                         turn = None
                         continue
@@ -864,8 +885,29 @@ class PiAgent:
         warnings.append(
             f"PiAgent: loop ended without Terminate after {self.max_iter} iterations"
         )
+
+        # Salvage findings from run_damage_detection rather than returning empty.
+        # The VLM verified damage but failed to call Terminate — don't discard its work.
+        fallback_items = []
+        for d in self._vlm_detections:
+            fallback_items.append({
+                "damage_type": d.get("class", "dent"),
+                "part":        d.get("part", "front_bumper"),
+                "severity":    d.get("severity", "minor"),
+                "confidence":  float(d.get("confidence", 0.5)),
+                "bbox_pct":    d.get("bbox_pct", [5, 5, 95, 95]),
+            })
+
+        if fallback_items:
+            warnings.append(
+                f"FALLBACK: using {len(fallback_items)} item(s) from run_damage_detection "
+                "because Terminate was never called. Escalating for human review."
+            )
+        else:
+            warnings.append("EMPTY_DAMAGE_MAP: the VLM reported no visible damage. Escalating.")
+
         return {
-            "damage_items":         [],
+            "damage_items":         fallback_items,
             "vlm_detections":       self._vlm_detections,
             "annotated_image_path": annotated_path,
             "tool_calls":           tool_calls,
@@ -980,11 +1022,37 @@ class PiAgent:
                         "error": "zoom_region requires bbox [x1,y1,x2,y2]",
                         "summary": "missing bbox argument",
                     }
-                out = _zoom_region(image_path, bbox)
+                # bbox is in percentage coords (0-100) — convert to pixels.
+                try:
+                    with Image.open(image_path) as _img:
+                        _iw, _ih = _img.size
+                    bbox_px = [
+                        bbox[0] / 100.0 * _iw,
+                        bbox[1] / 100.0 * _ih,
+                        bbox[2] / 100.0 * _iw,
+                        bbox[3] / 100.0 * _ih,
+                    ]
+                except Exception:
+                    bbox_px = bbox  # fallback: use as-is
+
+                # Guard: if the zoom covers > 80% of the image it is useless.
+                w_frac = (bbox[2] - bbox[0]) / 100.0
+                h_frac = (bbox[3] - bbox[1]) / 100.0
+                if w_frac > 0.80 and h_frac > 0.80:
+                    return {
+                        "type": "error",
+                        "error": (
+                            "zoom_region bbox covers the whole image — "
+                            "zoom into a specific sub-region of the damage instead."
+                        ),
+                        "summary": "bbox too large to be a useful zoom",
+                    }
+
+                out = _zoom_region(image_path, bbox_px)
                 return {
                     "type": "image",
                     "image_path": out,
-                    "summary": f"Zoomed into region {[int(v) for v in bbox]}",
+                    "summary": f"Zoomed into region {[int(v) for v in bbox]} (pct)",
                 }
 
             elif name == "detect_part":

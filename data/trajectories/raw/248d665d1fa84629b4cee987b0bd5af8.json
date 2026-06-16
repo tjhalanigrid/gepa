@@ -1,0 +1,81 @@
+{
+  "trajectory_id": "248d665d1fa84629b4cee987b0bd5af8",
+  "image_path": "/Users/kokumar/Desktop/veh_dmg_detection/data/uploads/51ff3e16895147acae5290eecea100a0.webp",
+  "image_width": 390,
+  "image_height": 280,
+  "created_at": "2026-06-16T05:41:11.866359+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Identify all visible damage on the vehicle."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 1 damage region(s): 1× dent",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_2ed2d6d9.jpg",
+      "observation_data": null,
+      "elapsed_s": 7.268
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "dent",
+              "part": "rear_bumper",
+              "severity": "moderate",
+              "confidence": 0.95,
+              "bbox_pct": [
+                30,
+                50,
+                60,
+                80
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 1 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "dent",
+            "part": "rear_bumper",
+            "severity": "moderate",
+            "confidence": 0.95,
+            "bbox_pct": [
+              30,
+              50,
+              60,
+              80
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "dent",
+      "part": "rear_bumper",
+      "severity": "moderate",
+      "cost_min": 8000,
+      "cost_max": 25000
+    }
+  ],
+  "total_min": 8000,
+  "total_max": 25000,
+  "total_elapsed_s": 38.36,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

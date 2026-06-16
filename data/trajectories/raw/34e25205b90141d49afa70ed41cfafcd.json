@@ -1,0 +1,51 @@
+{
+  "trajectory_id": "34e25205b90141d49afa70ed41cfafcd",
+  "image_path": "/Users/kokumar/Desktop/veh_dmg_detection/data/uploads/1c2b2578c0f049d2b54838819fbd0b08.jpg",
+  "image_width": 1200,
+  "image_height": 800,
+  "created_at": "2026-06-13T16:20:24.283733+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Identify all visible damage on the vehicle."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 3 damage region(s): 3× dent",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_8164fff1.jpg",
+      "observation_data": null,
+      "elapsed_s": 17.461
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            275,
+            327,
+            730,
+            904
+          ],
+          "reason": "Verify headlight damage severity and part classification."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [275, 327, 730, 904]",
+      "observation_image_path": "/tmp/zoom_20e45f63.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.019
+    }
+  ],
+  "final_damage_map": [],
+  "total_min": 0,
+  "total_max": 0,
+  "total_elapsed_s": 77.2,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

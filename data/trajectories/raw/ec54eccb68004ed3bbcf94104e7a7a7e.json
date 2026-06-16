@@ -1,0 +1,183 @@
+{
+  "trajectory_id": "ec54eccb68004ed3bbcf94104e7a7a7e",
+  "image_path": "/private/var/folders/2l/lb8dfbrs73jf0x03hd1h1rf80000gn/T/vda_upload_g8eyeb70.jpg",
+  "image_width": 720,
+  "image_height": 540,
+  "created_at": "2026-06-16T07:03:19.107251+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Identify all visible damage on the vehicle."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 3 damage region(s): 2× dent, 1× scratch",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_125046dc.jpg",
+      "observation_data": null,
+      "elapsed_s": 14.814
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            60,
+            30,
+            90,
+            70
+          ],
+          "reason": "Verify dent on rear left door and scratch location."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [60, 30, 90, 70] (pct)",
+      "observation_image_path": "/tmp/zoom_d4e28467.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.008
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            70,
+            40,
+            95,
+            80
+          ],
+          "reason": "Verify dent on front bumper."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [70, 40, 95, 80] (pct)",
+      "observation_image_path": "/tmp/zoom_35f324be.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.006
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "dent",
+              "part": "rear_left_door",
+              "severity": "moderate",
+              "confidence": 0.95,
+              "bbox_pct": [
+                60,
+                30,
+                90,
+                70
+              ]
+            },
+            {
+              "damage_type": "scratch",
+              "part": "rear_left_door",
+              "severity": "minor",
+              "confidence": 0.78,
+              "bbox_pct": [
+                60,
+                30,
+                90,
+                70
+              ]
+            },
+            {
+              "damage_type": "dent",
+              "part": "rear_bumper",
+              "severity": "moderate",
+              "confidence": 0.92,
+              "bbox_pct": [
+                70,
+                40,
+                95,
+                80
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 3 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "dent",
+            "part": "rear_left_door",
+            "severity": "moderate",
+            "confidence": 0.95,
+            "bbox_pct": [
+              60,
+              30,
+              90,
+              70
+            ]
+          },
+          {
+            "damage_type": "scratch",
+            "part": "rear_left_door",
+            "severity": "minor",
+            "confidence": 0.78,
+            "bbox_pct": [
+              60,
+              30,
+              90,
+              70
+            ]
+          },
+          {
+            "damage_type": "dent",
+            "part": "rear_bumper",
+            "severity": "moderate",
+            "confidence": 0.92,
+            "bbox_pct": [
+              70,
+              40,
+              95,
+              80
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "dent",
+      "part": "rear_left_door",
+      "severity": "moderate",
+      "cost_min": 10000,
+      "cost_max": 30000
+    },
+    {
+      "damage": "scratch",
+      "part": "rear_left_door",
+      "severity": "minor",
+      "cost_min": 3500,
+      "cost_max": 9000
+    },
+    {
+      "damage": "dent",
+      "part": "rear_bumper",
+      "severity": "moderate",
+      "cost_min": 8000,
+      "cost_max": 25000
+    }
+  ],
+  "total_min": 21500,
+  "total_max": 64000,
+  "total_elapsed_s": 74.84,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

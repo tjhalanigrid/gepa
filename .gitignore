@@ -13,6 +13,11 @@ venv/
 .venv/
 env/
 
+# Environment variables — never commit credentials
+.env
+.env.*
+!.env.example
+
 # IDE files
 .vscode/
 .idea/

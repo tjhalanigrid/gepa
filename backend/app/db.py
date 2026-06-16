@@ -10,9 +10,14 @@ and a plain synchronous SQLAlchemy session is safe and simple here.
 """
 
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
+# Load .env from repo root (two levels up from this file: backend/app/db.py)
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",

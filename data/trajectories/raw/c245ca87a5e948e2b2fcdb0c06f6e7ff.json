@@ -1,0 +1,71 @@
+{
+  "trajectory_id": "c245ca87a5e948e2b2fcdb0c06f6e7ff",
+  "image_path": "/private/var/folders/2l/lb8dfbrs73jf0x03hd1h1rf80000gn/T/vda_upload_53ua9avd.jpg",
+  "image_width": 800,
+  "image_height": 485,
+  "created_at": "2026-06-16T06:39:49.233417+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "To detect all visible damage on the vehicle."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 8 damage region(s): 7× dent, 1× tire_flat",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_9a0b4ac3.jpg",
+      "observation_data": null,
+      "elapsed_s": 31.335
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            0,
+            0,
+            100,
+            100
+          ],
+          "reason": "To get a closer look at the front bumper and left fender damage to confirm severity and part classification."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [0, 0, 100, 100]",
+      "observation_image_path": "/tmp/zoom_c3eb830e.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.005
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            50,
+            200,
+            450,
+            800
+          ],
+          "reason": "To get a closer look at the front bumper, hood, and left fender damage to confirm severity and part classification."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [50, 200, 450, 800]",
+      "observation_image_path": "/tmp/zoom_3d74f05e.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.008
+    }
+  ],
+  "final_damage_map": [],
+  "total_min": 0,
+  "total_max": 0,
+  "total_elapsed_s": 104.33,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

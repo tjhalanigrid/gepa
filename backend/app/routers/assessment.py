@@ -1,22 +1,31 @@
 """
 Assessment intake and job polling.
 
-  POST /assess            — save image, queue async pipeline job, return job_id
+  POST /assess            — save image to DB, queue async pipeline job, return job_id
   GET  /job/{id}          — poll job status / result
   GET  /job/{id}/iterations — per-tool-call iteration log for the UI
+
+Images are stored as BYTEA in the claim_images table — no filesystem dependency.
+The pipeline still needs a file path, so we write a temp file for its duration
+and delete it once the job completes.
 """
 
 import asyncio
 import logging
-import shutil
+import os
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from sqlalchemy.orm import Session as DBSession
 
 from .. import state
 from ..core import config
+from ..db import get_db
+from ..models import ClaimImage
 from ..services.assessment import run_assessment_job
 
 logger = logging.getLogger(__name__)
@@ -28,9 +37,10 @@ async def assess_damage(
     image: UploadFile = File(...),
     claim_id: str = Form(default=None),
     vehicle_id: str = Form(default=None),
+    db: DBSession = Depends(get_db),
 ):
     """
-    Accept a vehicle image, save it, and immediately return a job_id.
+    Accept a vehicle image, persist it to the DB, and immediately return a job_id.
     The pipeline runs asynchronously — poll GET /job/{job_id} for the result.
     """
     if image.content_type not in config.ALLOWED_IMAGE_TYPES:
@@ -42,35 +52,53 @@ async def assess_damage(
             ),
         )
 
-    config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    image_bytes = await image.read()
+    mime_type = image.content_type or "image/jpeg"
+
+    # Write to a temp file — the pipeline orchestrator needs a file path.
     suffix = Path(image.filename).suffix if image.filename else ".jpg"
-    save_path = config.UPLOAD_DIR / f"{uuid.uuid4().hex}{suffix}"
-
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix, prefix="vda_upload_")
     try:
-        with save_path.open("wb") as f:
-            shutil.copyfileobj(image.file, f)
+        with os.fdopen(tmp_fd, "wb") as f:
+            f.write(image_bytes)
     except Exception as e:
-        logger.error(f"Failed to save uploaded image: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save uploaded image.")
-
-    logger.info(
-        f"Image saved: {save_path.name} | claim_id={claim_id} | vehicle_id={vehicle_id}"
-    )
+        os.unlink(tmp_path)
+        logger.error(f"Failed to write temp file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to prepare image for processing.")
 
     try:
         cfg = config.load_config()
     except FileNotFoundError as e:
+        os.unlink(tmp_path)
         raise HTTPException(status_code=500, detail=str(e))
 
     job_id = uuid.uuid4().hex
+
+    # Persist the original image to DB immediately so it survives independently
+    # of the temp file and the pipeline outcome.
+    def _save_original():
+        db.add(ClaimImage(
+            job_id=job_id,
+            image_type="original",
+            mime_type=mime_type,
+            data=image_bytes,
+        ))
+        db.commit()
+
+    await run_in_threadpool(_save_original)
+
     state.jobs[job_id] = {
         "status": "queued",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "_tmp_path": tmp_path,   # tracked so the job runner can delete it
     }
+
     asyncio.create_task(
-        run_assessment_job(job_id, save_path, cfg, claim_id, vehicle_id)
+        run_assessment_job(job_id, Path(tmp_path), cfg, claim_id, vehicle_id)
     )
-    logger.info(f"Job queued: {job_id}")
+    logger.info(
+        f"Job queued: {job_id} | original image saved to DB ({len(image_bytes):,} bytes)"
+    )
     return {"job_id": job_id, "status": "processing"}
 
 
@@ -87,7 +115,6 @@ async def get_job_status(job_id: str):
 
     job = state.jobs[job_id]
 
-    # Surface elapsed time and auto-fail jobs stuck past the wall clock.
     if job["status"] == "processing" and "started_at" in job:
         started = datetime.fromisoformat(job["started_at"])
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()

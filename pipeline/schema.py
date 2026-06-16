@@ -84,6 +84,7 @@ class SessionState(BaseModel):
     report: FinalDamageReport
     created_at: str                          # ISO8601
     claim_id: Optional[str] = None
+    job_id: Optional[str] = None            # links to claim_images rows in DB
     corrected_map: Optional[List[DamagePartEntry]] = None
     correction_notes: Optional[str] = None
 

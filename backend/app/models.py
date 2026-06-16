@@ -11,7 +11,7 @@ timestamps) are promoted out for indexing and ordering.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, LargeBinary, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -87,3 +87,18 @@ class UserSettings(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     data: Mapped[dict] = mapped_column(JSONB, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class ClaimImage(Base):
+    """Stores all assessment images (original upload + pipeline outputs) as BYTEA.
+    No filesystem dependency — images survive server restarts and container rebuilds.
+    image_type: 'original' | 'annotated' | 'masked' | 'merged'
+    """
+    __tablename__ = "claim_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    image_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
