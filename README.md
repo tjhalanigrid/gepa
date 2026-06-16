@@ -1,4 +1,7 @@
-# 🚗 Vehicle Damage Assessment — VLM Brain + Untrained CV Models
+# Vehicle Damage Assessment — VLM Brain + Untrained CV Models
+
+**Repo:** `https://github.com/griddynamics/veh_dmg_detection`  
+**Active branch:** `MVP_Qwen_3.5_No_Models`
 
 An automotive-claims MVP that inspects a photo of a damaged vehicle and returns a
 structured, costed damage report — with a human-review gate.
@@ -11,21 +14,19 @@ deterministically in the backend, not by the LLM.
 
 ---
 
-## 🧠 Why "VLM brain + untrained models"
+## Why "VLM brain + untrained models"
 
 Traditional pipelines train a damage detector (e.g. a YOLO fine-tuned on a damage
 dataset). This MVP deliberately uses **no trained damage model**:
 
-- **The VLM (Qwen `qwen3.5:9b` via Ollama) is the sole reasoning brain.** It looks
-  at the raw pixels and decides *what* the damage is, *which part* it is on, and
-  *how severe* it is — entirely from vision.
-- **The untrained CV models add spatial grounding only — they emit no damage
-  labels:**
+- **The VLM (`qwen3.5:9b` via Ollama) is the sole reasoning brain.** It looks at
+  the raw pixels and decides *what* the damage is, *which part* it is on, and *how
+  severe* it is — entirely from vision.
+- **The untrained CV models add spatial grounding only — they emit no damage labels:**
   - **SAM2** (stock `sam2.1_b.pt`, ultralytics) — segments the damage regions the
     brain found into precise **masks**.
-  - **YOLO** (stock `yolov8n.pt`, COCO) — an optional, untrained vehicle detector
-    that can locate the car (ROI). *Available in the repo as
-    `models/vehicle_detection/`; the default pipeline runs VLM + SAM2.*
+  - **YOLO** (stock `yolov8n.pt`, COCO) — optional untrained vehicle detector for
+    car ROI. Available at `models/vehicle_detection/`; not in the default pipeline.
 
 This keeps the system honest: an untrained model can never assert damage it was
 never trained to recognise — only the VLM names damage, and only on what it can
@@ -33,7 +34,7 @@ actually see.
 
 ---
 
-## 🏗️ Architecture (live flow)
+## Architecture (live flow)
 
 ```mermaid
 graph TD
@@ -57,7 +58,7 @@ graph TD
     H --> I{"Approval (image-based, not cost)"}
     I -->|corroborated| J["AUTO_APPROVED"]
     I -->|uncorroborated / no result| K["ESCALATE_TO_HUMAN → review & correct"]
-    H --> L["Dashboard (dashboard/app.py)"]
+    H --> L["React/Vite frontend (frontend/)"]
 ```
 
 **Pipeline stages** (`pipeline/orchestrator.py::run`):
@@ -72,12 +73,12 @@ graph TD
    "segment-everything"), producing tight **masks** on the actual damage. The
    **merged union** (VLM boxes ∪ SAM2 mask-boxes) is rendered source-coloured.
 4. **Approval (image-based)** — the report is `AUTO_APPROVED` when the VLM's final
-   claims are corroborated by its own detection pass; otherwise it
-   `ESCALATE_TO_HUMAN`. **Cost never gates approval.**
+   claims are corroborated by its own detection pass; otherwise `ESCALATE_TO_HUMAN`.
+   **Cost never gates approval.**
 
 ---
 
-## 🛡️ Anti-hallucination contract
+## Anti-hallucination contract
 
 - **Untrained models emit no damage labels** — they cannot hallucinate damage they
   were never trained to recognise.
@@ -89,50 +90,66 @@ graph TD
 
 ---
 
-## 🖥️ Dashboard
+## Stack
 
-Per assessment the Streamlit UI shows:
-
-- **Detected Damage** — the VLM's damage bounding boxes.
-- **Merged (VLM ∪ SAM2)** — union boxes, coloured by source (🟩 VLM · 🟧 VLM
-  confirmed by SAM2 · 🟦 SAM2 region).
-- **Damage masks (SAM2)** — precise segmentation overlay (auto-generated).
-- **Agent iteration logs** — every tool the brain chose to call, *why*, and the
-  result (free-form, not a fixed pipeline).
-- **Damage summary** — part, severity, and INR cost range.
-- **Human-in-the-loop review** — escalated claims open an editable Review → Correct
-  → Annotate → Submit flow; the result is logged as `HUMAN_APPROVED`.
+| Layer | Technology |
+|---|---|
+| VLM brain | `qwen3.5:9b` via Ollama (`localhost:11434`) |
+| Backend API | FastAPI (`backend/app/main.py`) |
+| Frontend | React + Vite (MUI, Radix UI, Tailwind) |
+| Database | PostgreSQL 16 + pgvector (`pgvector/pgvector:pg16`) via Docker |
+| Image storage | BYTEA in PostgreSQL `claim_images` table — no filesystem dependency |
+| Segmentation | SAM2 `sam2.1_b.pt` (stock ultralytics, backend-only) |
+| Schema | Pydantic v2 (`pipeline/schema.py`) |
 
 ---
 
-## 🚀 Setup & Run
+## Setup & Run
 
 ### Prerequisites
-- Python 3.10+ (developed on 3.13), `pip install -r requirements-base.txt`
-- **Ollama** with a vision-capable model:
-  ```bash
-  ollama serve                 # Terminal 1 — keep running
-  ollama pull qwen3.5:9b       # vision-capable VLM brain
-  ```
-- SAM2 weight `models/damage_detection/models/sam2.1_b.pt` (stock ultralytics SAM2).
-  `yolov8n.pt` auto-downloads on first use if vehicle detection is enabled.
 
-### Run (3 terminals)
+- Python 3.10
+- Node.js 18+
+- Docker + Docker Compose
+- **Ollama** with the vision VLM:
+  ```bash
+  ollama serve                  # keep running in background
+  ollama pull qwen3.5:9b
+  ```
+- SAM2 weight at `models/part_segmentation/weights/sam2.1_hiera_base_plus.pt`
+  (stock ultralytics SAM2 — download separately if not present via Git LFS).
+
+### Environment
+
+Create a `.env` file at the repo root (gitignored):
+
+```env
+DATABASE_URL=postgresql+psycopg2://admin:secret@localhost:5433/damage_ai
+```
+
+### 4-terminal startup
+
 ```bash
 # Terminal 1 — VLM brain
 ollama serve
 
-# Terminal 2 — backend API
-uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload
+# Terminal 2 — PostgreSQL (Docker)
+cd docker && docker compose up postgres -d
 
-# Terminal 3 — dashboard
-streamlit run dashboard/app.py        # http://localhost:8501
+# Terminal 3 — Backend API
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Terminal 4 — Frontend
+cd frontend && npm install && npm run dev
+# → http://localhost:5173
 ```
 
-Upload a vehicle photo and review the assessment. First request is slower while the
-VLM loads into memory; subsequent runs are faster.
+First request is slower while the VLM loads into memory; subsequent runs are faster.
 
 ### Quick CLI check (no UI)
+
 ```bash
 python - <<'PY'
 import yaml, json
@@ -144,41 +161,55 @@ print("tools used:", [it["tool"] for it in rep["iterations"]])
 PY
 ```
 
+### Health check
+
+```bash
+curl http://localhost:8000/health
+```
+
 ---
 
-## 📁 Repo structure (key paths)
+## Repo structure (key paths)
 
 ```
 models/vlm_reasoning/
-  pi_agent.py        ← the VLM brain: free-form agent loop, tools, prompt
+  pi_agent.py        ← VLM brain: free-form agent loop, tools, prompts
   ollama_client.py   ← Ollama HTTP client (vision messages)
   cost_db.py         ← COST_DB + lookup_cost() (single pricing source)
 models/part_segmentation/
-  infer.py           ← SAM2 segmentation (untrained)
+  infer.py           ← SAM2 segmentation (untrained, backend-only)
 models/vehicle_detection/
   __init__.py        ← stock YOLOv8 vehicle ROI (untrained, optional)
-shared/sam_mask.py   ← SAM2 mask overlay (ultralytics)
 pipeline/
   orchestrator.py    ← run(): brain loop → backend cost → SAM2 masks → approval
-  schema.py          ← Pydantic contracts (FinalDamageReport, etc.)
-backend/app/main.py  ← FastAPI: /assess, /job, HITL /session endpoints, images
-dashboard/app.py     ← Streamlit UI (tabs, iteration logs, review flow)
-configs/global_config.yaml  ← model id, sampling, SAM2 weights, etc.
+  schema.py          ← Pydantic contracts (FinalDamageReport, SessionState, etc.)
+backend/app/
+  main.py            ← FastAPI app, CORS, startup warmup
+  routers/           ← /assess /job /session /vehicles /claims /images ...
+  models.py          ← SQLAlchemy ORM (users, vehicles, claims, claim_images, ...)
+  migrations/
+    schema.sql       ← PostgreSQL init script (mounted by Docker Compose)
+frontend/
+  src/               ← React/Vite UI (MUI + Radix UI + Tailwind)
+docker/
+  docker-compose.yml ← postgres (pgvector:pg16, port 5433) + pgadmin
+configs/global_config.yaml  ← model id, sampling params, SAM2 weights, thresholds
 ```
 
 ---
 
-## ⚙️ Configuration (`configs/global_config.yaml`)
+## Configuration (`configs/global_config.yaml`)
 
-- `vlm.model_id: qwen3.5:9b` — the Ollama brain tag (vision-capable).
-- `vlm.thinking: false`, instruct sampling (`temperature 0.7`, `top_p 0.8`,
-  `top_k 20`, `presence_penalty 1.5`), `num_ctx 8192` — Qwen "Best Practices"
-  (thinking mode is off so the JSON action is never truncated).
-- `part_segmentation.sam2.weights_path` — the stock SAM2 weight used for masks.
+- `vlm.model_id: qwen3.5:9b` — Ollama brain tag (vision-capable).
+- `vlm.thinking: false` — thinking mode **must** stay off; enabling it spends the
+  full token budget on `<think>` and the JSON action is never emitted.
+- Instruct sampling: `temperature 0.7`, `top_p 0.8`, `top_k 20`,
+  `presence_penalty 1.5`, `num_ctx 8192` — Qwen Best Practices.
+- `part_segmentation.sam2.weights_path` — stock SAM2 weight for mask generation.
 
 ---
 
-## ⚠️ Known limitation
+## Known limitation
 
 Because the system is fully **untrained**, bounding-box *placement* is approximate —
 the boxes/masks land on the right damage area but are not pixel-tight, since they
