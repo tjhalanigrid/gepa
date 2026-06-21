@@ -1,0 +1,338 @@
+{
+  "trajectory_id": "39fa35ae781d49a29a17dd9aeb0d0f52",
+  "image_path": "/private/var/folders/ck/z5x0f87n51g0pn_yrg4gyyp80000gn/T/vda_upload_yquuyaen.webp",
+  "image_width": 1080,
+  "image_height": 1440,
+  "created_at": "2026-06-18T19:49:56.046608+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "severe front end collision with crumpled hood, broken bumper and grille"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 10 damage region(s): 1× crack, 2× crumpled, 2× detached_part, 1× lamp_broken, 2× missing_part, 2× structural_damage",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_e09cf5ac.jpg",
+      "observation_data": null,
+      "elapsed_s": 30.579
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            40,
+            180,
+            60,
+            230
+          ],
+          "reason": "verify windshield crack severity and whether it's structural or just glass damage"
+        }
+      },
+      "observation_type": "error",
+      "observation_summary": "zoom_region raised an unexpected exception: Coordinate 'lower' is less than 'upper'",
+      "observation_image_path": null,
+      "observation_data": null,
+      "elapsed_s": 0.049
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            75,
+            180,
+            95,
+            230
+          ],
+          "reason": "confirm wheel is damaged/missing as detected"
+        }
+      },
+      "observation_type": "error",
+      "observation_summary": "zoom_region raised an unexpected exception: Coordinate 'lower' is less than 'upper'",
+      "observation_image_path": null,
+      "observation_data": null,
+      "elapsed_s": 0.029
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "hood",
+              "severity": "severe",
+              "confidence": 0.98,
+              "bbox_pct": [
+                45,
+                175,
+                65,
+                230
+              ]
+            },
+            {
+              "damage_type": "missing_part",
+              "part": "front_bumper",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                40,
+                280,
+                70,
+                350
+              ]
+            },
+            {
+              "damage_type": "detached_part",
+              "part": "front_bumper",
+              "severity": "severe",
+              "confidence": 0.92,
+              "bbox_pct": [
+                60,
+                350,
+                90,
+                420
+              ]
+            },
+            {
+              "damage_type": "detached_part",
+              "part": "radiator_support",
+              "severity": "severe",
+              "confidence": 0.89,
+              "bbox_pct": [
+                70,
+                380,
+                100,
+                500
+              ]
+            },
+            {
+              "damage_type": "structural_damage",
+              "part": "windshield",
+              "severity": "moderate",
+              "confidence": 0.6,
+              "bbox_pct": [
+                42,
+                160,
+                98,
+                230
+              ]
+            },
+            {
+              "damage_type": "lamp_broken",
+              "part": "headlight",
+              "severity": "severe",
+              "confidence": 0.87,
+              "bbox_pct": [
+                55,
+                200,
+                80,
+                260
+              ]
+            },
+            {
+              "damage_type": "crack",
+              "part": "windshield",
+              "severity": "moderate",
+              "confidence": 0.76,
+              "bbox_pct": [
+                43,
+                165,
+                97,
+                225
+              ]
+            },
+            {
+              "damage_type": "missing_part",
+              "part": "wheel",
+              "severity": "severe",
+              "confidence": 0.85,
+              "bbox_pct": [
+                75,
+                280,
+                95,
+                340
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 8 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "hood",
+            "severity": "severe",
+            "confidence": 0.98,
+            "bbox_pct": [
+              45,
+              175,
+              65,
+              230
+            ]
+          },
+          {
+            "damage_type": "missing_part",
+            "part": "front_bumper",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              40,
+              280,
+              70,
+              350
+            ]
+          },
+          {
+            "damage_type": "detached_part",
+            "part": "front_bumper",
+            "severity": "severe",
+            "confidence": 0.92,
+            "bbox_pct": [
+              60,
+              350,
+              90,
+              420
+            ]
+          },
+          {
+            "damage_type": "detached_part",
+            "part": "radiator_support",
+            "severity": "severe",
+            "confidence": 0.89,
+            "bbox_pct": [
+              70,
+              380,
+              100,
+              500
+            ]
+          },
+          {
+            "damage_type": "structural_damage",
+            "part": "windshield",
+            "severity": "moderate",
+            "confidence": 0.6,
+            "bbox_pct": [
+              42,
+              160,
+              98,
+              230
+            ]
+          },
+          {
+            "damage_type": "lamp_broken",
+            "part": "headlight",
+            "severity": "severe",
+            "confidence": 0.87,
+            "bbox_pct": [
+              55,
+              200,
+              80,
+              260
+            ]
+          },
+          {
+            "damage_type": "crack",
+            "part": "windshield",
+            "severity": "moderate",
+            "confidence": 0.76,
+            "bbox_pct": [
+              43,
+              165,
+              97,
+              225
+            ]
+          },
+          {
+            "damage_type": "missing_part",
+            "part": "wheel",
+            "severity": "severe",
+            "confidence": 0.85,
+            "bbox_pct": [
+              75,
+              280,
+              95,
+              340
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "hood",
+      "severity": "severe",
+      "cost_min": 15000,
+      "cost_max": 45000
+    },
+    {
+      "damage": "missing_part",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 12000,
+      "cost_max": 35000
+    },
+    {
+      "damage": "detached_part",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 8000,
+      "cost_max": 22000
+    },
+    {
+      "damage": "detached_part",
+      "part": "radiator_support",
+      "severity": "severe",
+      "cost_min": 3000,
+      "cost_max": 8000
+    },
+    {
+      "damage": "structural_damage",
+      "part": "windshield",
+      "severity": "moderate",
+      "cost_min": 3000,
+      "cost_max": 8000
+    },
+    {
+      "damage": "lamp_broken",
+      "part": "headlight",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 28000
+    },
+    {
+      "damage": "crack",
+      "part": "windshield",
+      "severity": "moderate",
+      "cost_min": 15000,
+      "cost_max": 40000
+    },
+    {
+      "damage": "missing_part",
+      "part": "wheel",
+      "severity": "severe",
+      "cost_min": 8000,
+      "cost_max": 25000
+    }
+  ],
+  "total_min": 74000,
+  "total_max": 211000,
+  "total_elapsed_s": 82.68,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

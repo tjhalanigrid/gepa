@@ -12,8 +12,6 @@ and delete it once the job completes.
 
 import asyncio
 import logging
-import os
-import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,28 +52,28 @@ async def assess_damage(
 
     image_bytes = await image.read()
     mime_type = image.content_type or "image/jpeg"
-
-    # Write to a temp file — the pipeline orchestrator needs a file path.
     suffix = Path(image.filename).suffix if image.filename else ".jpg"
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix, prefix="vda_upload_")
-    try:
-        with os.fdopen(tmp_fd, "wb") as f:
-            f.write(image_bytes)
-    except Exception as e:
-        os.unlink(tmp_path)
-        logger.error(f"Failed to write temp file: {e}")
-        raise HTTPException(status_code=500, detail="Failed to prepare image for processing.")
 
     try:
         cfg = config.load_config()
     except FileNotFoundError as e:
-        os.unlink(tmp_path)
         raise HTTPException(status_code=500, detail=str(e))
 
     job_id = uuid.uuid4().hex
 
-    # Persist the original image to DB immediately so it survives independently
-    # of the temp file and the pipeline outcome.
+    # Persist the upload to a PERMANENT path (not a temp file). The image_path that
+    # ends up in corrections_log.jsonl must stay valid after the job, because GEPA
+    # re-reads the original image to score prompt candidates. (Also stored in DB below.)
+    config.NEW_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    save_path = config.NEW_UPLOAD_DIR / f"{job_id}{suffix}"
+    try:
+        save_path.write_bytes(image_bytes)
+    except Exception as e:
+        logger.error(f"Failed to save upload: {e}")
+        raise HTTPException(status_code=500, detail="Failed to prepare image for processing.")
+
+    # Persist the original image to DB as well (redundant with the file; survives any
+    # later filesystem cleanup).
     def _save_original():
         db.add(ClaimImage(
             job_id=job_id,
@@ -90,11 +88,12 @@ async def assess_damage(
     state.jobs[job_id] = {
         "status": "queued",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "_tmp_path": tmp_path,   # tracked so the job runner can delete it
+        # No "_tmp_path": the permanent upload is intentionally kept so GEPA can read
+        # it later as ground truth. (force_human_review collection mode.)
     }
 
     asyncio.create_task(
-        run_assessment_job(job_id, Path(tmp_path), cfg, claim_id, vehicle_id)
+        run_assessment_job(job_id, save_path, cfg, claim_id, vehicle_id)
     )
     logger.info(
         f"Job queued: {job_id} | original image saved to DB ({len(image_bytes):,} bytes)"

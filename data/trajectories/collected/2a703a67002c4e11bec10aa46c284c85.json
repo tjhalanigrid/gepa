@@ -1,0 +1,143 @@
+{
+  "trajectory_id": "2a703a67002c4e11bec10aa46c284c85",
+  "image_path": "/private/var/folders/ck/z5x0f87n51g0pn_yrg4gyyp80000gn/T/vda_upload_6et0xgv5.webp",
+  "image_width": 1080,
+  "image_height": 1440,
+  "created_at": "2026-06-18T17:13:37.451154+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "assess all visible vehicle damage from crash scene"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM found no damage (visual reasoning continues)",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_48efa378.jpg",
+      "observation_data": null,
+      "elapsed_s": 30.662
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "hood",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                28,
+                146,
+                73,
+                40
+              ]
+            },
+            {
+              "damage_type": "missing_part",
+              "part": "front_bumper",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                15,
+                200,
+                80,
+                450
+              ]
+            },
+            {
+              "damage_type": "crack",
+              "part": "headlight",
+              "severity": "moderate",
+              "confidence": 0.9,
+              "bbox_pct": [
+                73,
+                160,
+                85,
+                250
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 3 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "hood",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              28,
+              146,
+              73,
+              40
+            ]
+          },
+          {
+            "damage_type": "missing_part",
+            "part": "front_bumper",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              15,
+              200,
+              80,
+              450
+            ]
+          },
+          {
+            "damage_type": "crack",
+            "part": "headlight",
+            "severity": "moderate",
+            "confidence": 0.9,
+            "bbox_pct": [
+              73,
+              160,
+              85,
+              250
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "hood",
+      "severity": "severe",
+      "cost_min": 15000,
+      "cost_max": 45000
+    },
+    {
+      "damage": "missing_part",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 12000,
+      "cost_max": 35000
+    },
+    {
+      "damage": "crack",
+      "part": "headlight",
+      "severity": "moderate",
+      "cost_min": 5000,
+      "cost_max": 14000
+    }
+  ],
+  "total_min": 32000,
+  "total_max": 94000,
+  "total_elapsed_s": 159.84,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

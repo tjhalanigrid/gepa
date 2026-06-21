@@ -8,7 +8,10 @@ vlm:
   # thinking MUST stay false: thinking mode spends the whole token budget on
   # <think> and never emits the JSON action (confirmed empty-content truncation).
   thinking: false
-  temperature: 0.2               # lowered from 0.7 — high temp made the VLM drop its own findings at Terminate
+  temperature: 0.4              # 0.7 dropped findings at Terminate; 0.2 collapsed to one
+                                 # repeated label ("crumpled/severe/95%" on everything). 0.4 is
+                                 # the balance — and the orchestrator salvage path now backstops
+                                 # any Terminate drops, so temp no longer has to fight that.
   top_p: 0.8
   top_k: 20
   presence_penalty: 1.5               # curbs endless-repetition failure mode
@@ -23,6 +26,15 @@ approval:
   # Approval is based on the VISUAL assessment quality (whether the VLM's final
   # damage claims are corroborated by its own detection pass), NOT on cost.
   # There is no cost threshold — cost never gates approval.
+  #
+  # TEMP: force EVERY report to ESCALATE_TO_HUMAN so we collect verified ground-truth
+  # corrections for GEPA. Flip to false to restore normal auto-approve behaviour.
+  force_human_review: true
+
+# Where raw trajectories are saved. New folder (separate from the old data/trajectories/raw
+# junk, whose images live on teammates' machines and no longer exist locally).
+trajectory:
+  raw_dir: "data/trajectories/collected"
 
 # Qwen (VLM) is the SOLE brain. SAM2 below runs ONLY in the backend to produce the
 # segmentation masks and the merged-union (VLM ∪ SAM2) boxes shown in the UI — it is

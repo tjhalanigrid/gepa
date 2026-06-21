@@ -1,0 +1,175 @@
+{
+  "trajectory_id": "d56abfccd0434b4aaea893285773a24a",
+  "image_path": "/private/var/folders/ck/z5x0f87n51g0pn_yrg4gyyp80000gn/T/vda_upload_909foxo7.webp",
+  "image_width": 1080,
+  "image_height": 1440,
+  "created_at": "2026-06-18T20:51:19.387270+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Initial comprehensive scan of the entire vehicle for all types of damage"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 9 damage region(s): 1× bent, 1× crack, 2× crumpled, 1× detached_part, 2× missing_part, 1× scuff, 1× structural_damage",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_33948aa0.jpg",
+      "observation_data": null,
+      "elapsed_s": 28.693
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            20,
+            150,
+            80,
+            30
+          ],
+          "reason": "Verify hood crumpled damage and confirm it's not paint damage"
+        }
+      },
+      "observation_type": "error",
+      "observation_summary": "zoom_region raised an unexpected exception: Coordinate 'lower' is less than 'upper'",
+      "observation_image_path": null,
+      "observation_data": null,
+      "elapsed_s": 0.047
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            40,
+            250,
+            90,
+            60
+          ],
+          "reason": "Confirm front bumper missing/detached parts are actual structural loss vs debris on ground"
+        }
+      },
+      "observation_type": "error",
+      "observation_summary": "zoom_region raised an unexpected exception: Coordinate 'lower' is less than 'upper'",
+      "observation_image_path": null,
+      "observation_data": null,
+      "elapsed_s": 0.028
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            70,
+            180,
+            95,
+            32
+          ],
+          "reason": "Verify headlight is truly missing and not just damaged"
+        }
+      },
+      "observation_type": "error",
+      "observation_summary": "zoom_region raised an unexpected exception: Coordinate 'lower' is less than 'upper'",
+      "observation_image_path": null,
+      "observation_data": null,
+      "elapsed_s": 0.024
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            45,
+            160,
+            75,
+            22
+          ],
+          "reason": "Check windshield crack severity - appears moderate but need closer look"
+        }
+      },
+      "observation_type": "error",
+      "observation_summary": "zoom_region raised an unexpected exception: Coordinate 'lower' is less than 'upper'",
+      "observation_image_path": null,
+      "observation_data": null,
+      "elapsed_s": 0.022
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "hood",
+      "severity": "severe",
+      "cost_min": 15000,
+      "cost_max": 45000
+    },
+    {
+      "damage": "missing_part",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 12000,
+      "cost_max": 35000
+    },
+    {
+      "damage": "detached_part",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 8000,
+      "cost_max": 22000
+    },
+    {
+      "damage": "crumpled",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 30000
+    },
+    {
+      "damage": "structural_damage",
+      "part": "radiator_support",
+      "severity": "severe",
+      "cost_min": 25000,
+      "cost_max": 65000
+    },
+    {
+      "damage": "missing_part",
+      "part": "headlight",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 28000
+    },
+    {
+      "damage": "crack",
+      "part": "windshield",
+      "severity": "moderate",
+      "cost_min": 15000,
+      "cost_max": 40000
+    },
+    {
+      "damage": "bent",
+      "part": "side_mirror",
+      "severity": "moderate",
+      "cost_min": 3000,
+      "cost_max": 8000
+    },
+    {
+      "damage": "scuff",
+      "part": "radiator_support",
+      "severity": "moderate",
+      "cost_min": 3000,
+      "cost_max": 8000
+    }
+  ],
+  "total_min": 101000,
+  "total_max": 281000,
+  "total_elapsed_s": 110.69,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

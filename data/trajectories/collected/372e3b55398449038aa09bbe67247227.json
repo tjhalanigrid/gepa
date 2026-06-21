@@ -1,0 +1,108 @@
+{
+  "trajectory_id": "372e3b55398449038aa09bbe67247227",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/d9e66e47b8784750a1179c705b7666dc.jpg",
+  "image_width": 1280,
+  "image_height": 960,
+  "created_at": "2026-06-20T12:07:33.415651+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Initial full-vehicle scan to identify and classify all visible damage regions."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 8 damage region(s): 3× crack, 1× crumpled, 2× dent, 1× missing_part, 1× scuff",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_93ae07ce.jpg",
+      "observation_data": null,
+      "elapsed_s": 25.835
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            10,
+            45,
+            30,
+            70
+          ],
+          "reason": "Verify if Box 6 is a genuine crack on the front bumper or just surface paint damage."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [10, 45, 30, 70] (pct)",
+      "observation_image_path": "/tmp/zoom_e5270bec.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.017
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 30000
+    },
+    {
+      "damage": "crack",
+      "part": "left_fender",
+      "severity": "moderate",
+      "cost_min": 5000,
+      "cost_max": 14000
+    },
+    {
+      "damage": "dent",
+      "part": "left_fender",
+      "severity": "moderate",
+      "cost_min": 8000,
+      "cost_max": 20000
+    },
+    {
+      "damage": "dent",
+      "part": "front_bumper",
+      "severity": "moderate",
+      "cost_min": 8000,
+      "cost_max": 25000
+    },
+    {
+      "damage": "scuff",
+      "part": "rocker_panel",
+      "severity": "minor",
+      "cost_min": 2000,
+      "cost_max": 5000
+    },
+    {
+      "damage": "crack",
+      "part": "front_bumper",
+      "severity": "moderate",
+      "cost_min": 5000,
+      "cost_max": 15000
+    },
+    {
+      "damage": "missing_part",
+      "part": "headlight",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 28000
+    },
+    {
+      "damage": "crack",
+      "part": "left_fender",
+      "severity": "moderate",
+      "cost_min": 5000,
+      "cost_max": 14000
+    }
+  ],
+  "total_min": 53000,
+  "total_max": 151000,
+  "total_elapsed_s": 89.68,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

@@ -1,0 +1,163 @@
+{
+  "trajectory_id": "28f3fbe625fe4d1b9b8ea5be251fb493",
+  "image_path": "/private/var/folders/ck/z5x0f87n51g0pn_yrg4gyyp80000gn/T/vda_upload_zc0atgm4.jpg",
+  "image_width": 1000,
+  "image_height": 666,
+  "created_at": "2026-06-17T08:37:05.896956+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Initial assessment of all visible vehicle damage"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM found no damage (visual reasoning continues)",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_710985a7.jpg",
+      "observation_data": null,
+      "elapsed_s": 42.879
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            5,
+            280,
+            490,
+            630
+          ],
+          "reason": "front left corner showing severe collision damage"
+        }
+      },
+      "observation_type": "error",
+      "observation_summary": "bbox too large to be a useful zoom",
+      "observation_image_path": null,
+      "observation_data": null,
+      "elapsed_s": 0.001
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "front_bumper",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                5,
+                42,
+                38,
+                92
+              ]
+            },
+            {
+              "damage_type": "dent",
+              "part": "left_fender",
+              "severity": "moderate",
+              "confidence": 0.9,
+              "bbox_pct": [
+                15,
+                28,
+                65,
+                75
+              ]
+            },
+            {
+              "damage_type": "crack",
+              "part": "headlight",
+              "severity": "severe",
+              "confidence": 0.85,
+              "bbox_pct": [
+                340,
+                38,
+                490,
+                160
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 3 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "front_bumper",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              5,
+              42,
+              38,
+              92
+            ]
+          },
+          {
+            "damage_type": "dent",
+            "part": "left_fender",
+            "severity": "moderate",
+            "confidence": 0.9,
+            "bbox_pct": [
+              15,
+              28,
+              65,
+              75
+            ]
+          },
+          {
+            "damage_type": "crack",
+            "part": "headlight",
+            "severity": "severe",
+            "confidence": 0.85,
+            "bbox_pct": [
+              340,
+              38,
+              490,
+              160
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 30000
+    },
+    {
+      "damage": "dent",
+      "part": "left_fender",
+      "severity": "moderate",
+      "cost_min": 8000,
+      "cost_max": 20000
+    },
+    {
+      "damage": "crack",
+      "part": "headlight",
+      "severity": "severe",
+      "cost_min": 5000,
+      "cost_max": 14000
+    }
+  ],
+  "total_min": 23000,
+  "total_max": 64000,
+  "total_elapsed_s": 170.35,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

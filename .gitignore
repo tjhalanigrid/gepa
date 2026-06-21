@@ -38,6 +38,30 @@ backend/uploads/*
 postgres_data/
 mongo_data/
 
+# Runtime session state — transient, not ground truth
+data/sessions/
+
+# Generated pipeline outputs — not ground truth, regenerated on each run
+data/uploads/masked/
+data/uploads/vlm_annotated/
+data/uploads/*.webp
+data/uploads/*.jpg
+data/uploads/*.jpeg
+data/uploads/*.png
+
+# Frontend build output — build from source with `npm run build`
+frontend/dist/
+
+# Node modules — never commit, install with `npm install`
+frontend/node_modules/
+node_modules/
+
+# GEPA results — generated, not source
+scripts/gepa_results/
+
+# Temp VLM image files
+/tmp/vlm_r_*.jpg
+
 # Temporary run outputs and JSON claims reports
 experiments/outputs*/
 data/synthetic/*.csv

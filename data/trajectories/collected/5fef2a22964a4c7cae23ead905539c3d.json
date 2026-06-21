@@ -1,0 +1,174 @@
+{
+  "trajectory_id": "5fef2a22964a4c7cae23ead905539c3d",
+  "image_path": "/private/var/folders/ck/z5x0f87n51g0pn_yrg4gyyp80000gn/T/vda_upload_q0gwbptn.webp",
+  "image_width": 1080,
+  "image_height": 1440,
+  "created_at": "2026-06-18T18:48:53.397977+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Initial detection of all visible damage across the front end"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM found no damage (visual reasoning continues)",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_72f538b0.jpg",
+      "observation_data": null,
+      "elapsed_s": 30.712
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "front_bumper",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                28,
+                310,
+                76,
+                480
+              ]
+            },
+            {
+              "damage_type": "bent",
+              "part": "hood",
+              "severity": "moderate",
+              "confidence": 0.92,
+              "bbox_pct": [
+                26,
+                150,
+                78,
+                280
+              ]
+            },
+            {
+              "damage_type": "crack",
+              "part": "grill",
+              "severity": "severe",
+              "confidence": 0.88,
+              "bbox_pct": [
+                34,
+                290,
+                72,
+                360
+              ]
+            },
+            {
+              "damage_type": "lamp_broken",
+              "part": "headlight",
+              "severity": "moderate",
+              "confidence": 0.85,
+              "bbox_pct": [
+                70,
+                180,
+                84,
+                320
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 4 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "front_bumper",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              28,
+              310,
+              76,
+              480
+            ]
+          },
+          {
+            "damage_type": "bent",
+            "part": "hood",
+            "severity": "moderate",
+            "confidence": 0.92,
+            "bbox_pct": [
+              26,
+              150,
+              78,
+              280
+            ]
+          },
+          {
+            "damage_type": "crack",
+            "part": "grill",
+            "severity": "severe",
+            "confidence": 0.88,
+            "bbox_pct": [
+              34,
+              290,
+              72,
+              360
+            ]
+          },
+          {
+            "damage_type": "lamp_broken",
+            "part": "headlight",
+            "severity": "moderate",
+            "confidence": 0.85,
+            "bbox_pct": [
+              70,
+              180,
+              84,
+              320
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 30000
+    },
+    {
+      "damage": "bent",
+      "part": "hood",
+      "severity": "moderate",
+      "cost_min": 10000,
+      "cost_max": 28000
+    },
+    {
+      "damage": "crack",
+      "part": "grill",
+      "severity": "severe",
+      "cost_min": 3000,
+      "cost_max": 8000
+    },
+    {
+      "damage": "lamp_broken",
+      "part": "headlight",
+      "severity": "moderate",
+      "cost_min": 10000,
+      "cost_max": 28000
+    }
+  ],
+  "total_min": 33000,
+  "total_max": 94000,
+  "total_elapsed_s": 124.76,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

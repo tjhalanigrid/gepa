@@ -1,0 +1,80 @@
+{
+  "trajectory_id": "063619645ee547d8bc5e3e6c19eede64",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/e7f3bcfd705d43249d0094d2792d5910.jpg",
+  "image_width": 686,
+  "image_height": 386,
+  "created_at": "2026-06-19T12:06:08.050825+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "assess visible dents, scratches, and paint damage on the vehicle"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 2 damage region(s): 1× crumpled, 1× paint_damage",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_0e5a4b16.jpg",
+      "observation_data": null,
+      "elapsed_s": 8.953
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            20,
+            35,
+            78,
+            92
+          ],
+          "reason": "verify crumpled damage extent and paint loss details"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [20, 35, 78, 92] (pct)",
+      "observation_image_path": "/tmp/zoom_9ab05a9f.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.014
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {}
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 0 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": []
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "rear_left_door",
+      "severity": "moderate",
+      "cost_min": 14000,
+      "cost_max": 38000
+    },
+    {
+      "damage": "paint_damage",
+      "part": "rear_left_door",
+      "severity": "minor",
+      "cost_min": 4500,
+      "cost_max": 11000
+    }
+  ],
+  "total_min": 18500,
+  "total_max": 49000,
+  "total_elapsed_s": 44.48,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

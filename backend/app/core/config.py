@@ -13,6 +13,10 @@ import yaml
 # ── Filesystem locations ──────────────────────────────────────────────────────
 CONFIG_PATH = Path("configs/global_config.yaml")
 UPLOAD_DIR = Path("data/uploads")
+# Permanent home for freshly-uploaded images during the GEPA ground-truth collection
+# (kept separate from the legacy data/uploads pool). The image_path recorded in
+# corrections_log.jsonl points here and must survive the job for GEPA to read it.
+NEW_UPLOAD_DIR = Path("data/new_uploads")
 FEEDBACK_LOG = Path("data/feedback/feedback_log.jsonl")
 CORRECTIONS_LOG = Path("data/feedback/corrections_log.jsonl")
 

@@ -1,0 +1,194 @@
+{
+  "trajectory_id": "ca543dd09579439fb3b752c9b9451ff8",
+  "image_path": "/private/var/folders/ck/z5x0f87n51g0pn_yrg4gyyp80000gn/T/vda_upload_ecpoiw43.webp",
+  "image_width": 1080,
+  "image_height": 1440,
+  "created_at": "2026-06-18T19:30:19.282669+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Initial comprehensive scan of the entire vehicle for any detectable damage"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM found no damage (visual reasoning continues)",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_36313068.jpg",
+      "observation_data": null,
+      "elapsed_s": 25.711
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            15,
+            20,
+            83,
+            67
+          ],
+          "reason": "Zoom into the entire front of the vehicle to inspect all damage details."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [15, 20, 83, 67] (pct)",
+      "observation_image_path": "/tmp/zoom_cca7a4f1.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.056
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "hood",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                28,
+                137,
+                64,
+                19
+              ]
+            },
+            {
+              "damage_type": "missing_part",
+              "part": "front_bumper",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                15,
+                20,
+                83,
+                67
+              ]
+            },
+            {
+              "damage_type": "crumpled",
+              "part": "grill",
+              "severity": "severe",
+              "confidence": 0.9,
+              "bbox_pct": [
+                40,
+                25,
+                60,
+                15
+              ]
+            },
+            {
+              "damage_type": "dent",
+              "part": "left_fender",
+              "severity": "moderate",
+              "confidence": 0.85,
+              "bbox_pct": [
+                73,
+                20,
+                90,
+                45
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 4 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "hood",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              28,
+              137,
+              64,
+              19
+            ]
+          },
+          {
+            "damage_type": "missing_part",
+            "part": "front_bumper",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              15,
+              20,
+              83,
+              67
+            ]
+          },
+          {
+            "damage_type": "crumpled",
+            "part": "grill",
+            "severity": "severe",
+            "confidence": 0.9,
+            "bbox_pct": [
+              40,
+              25,
+              60,
+              15
+            ]
+          },
+          {
+            "damage_type": "dent",
+            "part": "left_fender",
+            "severity": "moderate",
+            "confidence": 0.85,
+            "bbox_pct": [
+              73,
+              20,
+              90,
+              45
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "hood",
+      "severity": "severe",
+      "cost_min": 15000,
+      "cost_max": 45000
+    },
+    {
+      "damage": "missing_part",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 12000,
+      "cost_max": 35000
+    },
+    {
+      "damage": "crumpled",
+      "part": "grill",
+      "severity": "severe",
+      "cost_min": 3000,
+      "cost_max": 8000
+    },
+    {
+      "damage": "dent",
+      "part": "left_fender",
+      "severity": "moderate",
+      "cost_min": 8000,
+      "cost_max": 20000
+    }
+  ],
+  "total_min": 38000,
+  "total_max": 108000,
+  "total_elapsed_s": 46.9,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

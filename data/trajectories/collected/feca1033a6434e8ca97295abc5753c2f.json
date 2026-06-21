@@ -1,0 +1,240 @@
+{
+  "trajectory_id": "feca1033a6434e8ca97295abc5753c2f",
+  "image_path": "/private/var/folders/ck/z5x0f87n51g0pn_yrg4gyyp80000gn/T/vda_upload_mzont95y.webp",
+  "image_width": 1080,
+  "image_height": 1440,
+  "created_at": "2026-06-18T17:30:42.490158+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "assess all visible damage on this severely crashed vehicle"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM found no damage (visual reasoning continues)",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_70d4b554.jpg",
+      "observation_data": null,
+      "elapsed_s": 30.67
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            15,
+            20,
+            80,
+            60
+          ],
+          "reason": "severe crushing and component detachment on the entire front end"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [15, 20, 80, 60] (pct)",
+      "observation_image_path": "/tmp/zoom_68b61abe.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.051
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "detect_part",
+        "arguments": {
+          "part_query": "front bumper assembly",
+          "reason": "verify if this is detached or severely damaged"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Part detection: 'front bumper assembly'",
+      "observation_image_path": "/tmp/part_e916a96e.jpg",
+      "observation_data": null,
+      "elapsed_s": 13.443
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "hood",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                18,
+                22,
+                45,
+                38
+              ]
+            },
+            {
+              "damage_type": "detached_part",
+              "part": "front_bumper",
+              "severity": "severe",
+              "confidence": 0.92,
+              "bbox_pct": [
+                16,
+                35,
+                78,
+                65
+              ]
+            },
+            {
+              "damage_type": "structural_damage",
+              "part": "radiator_support",
+              "severity": "severe",
+              "confidence": 0.88,
+              "bbox_pct": [
+                20,
+                40,
+                60,
+                55
+              ]
+            },
+            {
+              "damage_type": "crumpled",
+              "part": "grill",
+              "severity": "moderate",
+              "confidence": 0.85,
+              "bbox_pct": [
+                30,
+                35,
+                70,
+                42
+              ]
+            },
+            {
+              "damage_type": "lamp_broken",
+              "part": "headlight",
+              "severity": "severe",
+              "confidence": 0.9,
+              "bbox_pct": [
+                65,
+                28,
+                85,
+                45
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 5 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "hood",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              18,
+              22,
+              45,
+              38
+            ]
+          },
+          {
+            "damage_type": "detached_part",
+            "part": "front_bumper",
+            "severity": "severe",
+            "confidence": 0.92,
+            "bbox_pct": [
+              16,
+              35,
+              78,
+              65
+            ]
+          },
+          {
+            "damage_type": "structural_damage",
+            "part": "radiator_support",
+            "severity": "severe",
+            "confidence": 0.88,
+            "bbox_pct": [
+              20,
+              40,
+              60,
+              55
+            ]
+          },
+          {
+            "damage_type": "crumpled",
+            "part": "grill",
+            "severity": "moderate",
+            "confidence": 0.85,
+            "bbox_pct": [
+              30,
+              35,
+              70,
+              42
+            ]
+          },
+          {
+            "damage_type": "lamp_broken",
+            "part": "headlight",
+            "severity": "severe",
+            "confidence": 0.9,
+            "bbox_pct": [
+              65,
+              28,
+              85,
+              45
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "hood",
+      "severity": "severe",
+      "cost_min": 15000,
+      "cost_max": 45000
+    },
+    {
+      "damage": "detached_part",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 8000,
+      "cost_max": 22000
+    },
+    {
+      "damage": "structural_damage",
+      "part": "radiator_support",
+      "severity": "severe",
+      "cost_min": 25000,
+      "cost_max": 65000
+    },
+    {
+      "damage": "crumpled",
+      "part": "grill",
+      "severity": "moderate",
+      "cost_min": 3000,
+      "cost_max": 8000
+    },
+    {
+      "damage": "lamp_broken",
+      "part": "headlight",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 28000
+    }
+  ],
+  "total_min": 61000,
+  "total_max": 168000,
+  "total_elapsed_s": 185.44,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

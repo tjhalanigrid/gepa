@@ -1,0 +1,16 @@
+{
+  "trajectory_id": "99f8ab24340845c88bc8e2823852bdd3",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/1bb0081028b142f4ae2e524067ef9822.jpeg",
+  "image_width": 477,
+  "image_height": 280,
+  "created_at": "2026-06-19T15:33:18.879842+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [],
+  "final_damage_map": [],
+  "total_min": 0,
+  "total_max": 0,
+  "total_elapsed_s": 0.2,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

@@ -61,6 +61,63 @@ export function unwrapReport(r: AssessResult): FinalDamageReport {
   return isPendingReview(r) ? r.report : r;
 }
 
+/** Session id when the job escalated to human review, else null. */
+export function getSessionId(r: AssessResult): string | null {
+  return isPendingReview(r) ? r.session_id : null;
+}
+
+// ── Human review / correction (temporary ground-truth collection for GEPA) ─────
+
+export interface CorrectionAction {
+  action: "keep" | "edit" | "remove" | "add";
+  original: DamagePartEntry | null; // null for "add"
+  corrected: DamagePartEntry | null; // null for "remove"
+  reason?: string;
+}
+
+export interface SaveCorrectionPayload {
+  correction_actions: CorrectionAction[];
+  bbox_annotations?: unknown[];
+  final_damage_map: DamagePartEntry[];
+  annotated_by?: string;
+  notes?: string;
+}
+
+/**
+ * Submit a human-verified correction for an escalated session. Writes a line to
+ * data/feedback/corrections_log.jsonl on the backend — the ground-truth source the
+ * GEPA optimizer and the temporal few-shot prompt both read.
+ */
+export async function saveCorrection(
+  sessionId: string,
+  payload: SaveCorrectionPayload,
+): Promise<{ status: string; quality_score: number }> {
+  const res = await fetch(`${API_BASE_URL}/session/${encodeURIComponent(sessionId)}/save_correction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await parseError(res, "Saving correction failed"));
+  return res.json();
+}
+
+// Valid vocabulary — MUST match VALID_DAMAGE_CLASSES / VALID_PARTS in pi_agent.py.
+export const VALID_DAMAGE_CLASSES = [
+  "dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat",
+  "mirror_broken", "paint_damage", "scuff", "bent", "crumpled",
+  "missing_part", "detached_part", "wheel_damage", "structural_damage",
+];
+export const VALID_PARTS = [
+  "front_bumper", "rear_bumper", "hood", "grill", "windshield", "rear_windshield",
+  "left_fender", "right_fender",
+  "front_left_door", "front_right_door", "rear_left_door", "rear_right_door",
+  "front_left_window", "front_right_window", "rear_left_window", "rear_right_window",
+  "roof_panel", "trunk_lid", "tailgate", "quarter_panel",
+  "headlight", "taillight", "fog_lamp", "side_mirror",
+  "wheel", "tire", "rocker_panel", "radiator_support",
+];
+export const VALID_SEVERITIES = ["minor", "moderate", "severe"];
+
 // POST /assess is async: it returns a job id you poll via GET /job/{id}.
 interface AssessJobHandle {
   job_id: string;

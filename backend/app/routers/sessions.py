@@ -58,6 +58,7 @@ async def approve_session(session_id: str, request: ApproveRequest):
     session.status = "approved"
     session.corrected_map = updated_entries
     session.correction_notes = request.correction_notes
+    state.sessions.save(session_id)   # persist the approved status across restarts
 
     write_feedback(
         FeedbackEntry(
@@ -111,6 +112,7 @@ async def update_detections(session_id: str, request: BBoxCorrectionRequest):
     report.damage_part_map = updated_entries
     report.total_min = total_min
     report.total_max = total_max
+    state.sessions.save(session_id)   # persist the edited report across restarts
 
     try:
         generate_annotated_image(report.image_path, request.corrected_detections)

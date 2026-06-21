@@ -1,0 +1,141 @@
+{
+  "trajectory_id": "fd92b034ea8f4a3eb9d1d30621f70c67",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/206832b84beb473fbbf33ddad88db32b.jpeg",
+  "image_width": 259,
+  "image_height": 194,
+  "created_at": "2026-06-20T10:19:23.130813+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Initial scan for dents, scratches, broken parts, or other damage."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 4 damage region(s): 2× crack, 2× dent",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_c6812866.jpg",
+      "observation_data": null,
+      "elapsed_s": 10.495
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            70,
+            85,
+            93,
+            100
+          ],
+          "reason": "Verify dent on wheel area."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [70, 85, 93, 100] (pct)",
+      "observation_image_path": "/tmp/zoom_4504a972.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.014
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            62,
+            94,
+            78,
+            105
+          ],
+          "reason": "Verify dent in tire/tread region."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [62, 94, 78, 105] (pct)",
+      "observation_image_path": "/tmp/zoom_5f5be5ae.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.008
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            35,
+            26,
+            59,
+            47
+          ],
+          "reason": "Inspect rear windshield cracks for clarity and extent."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [35, 26, 59, 47] (pct)",
+      "observation_image_path": "/tmp/zoom_27273210.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.003
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crack",
+              "part": "rear_windshield",
+              "severity": "moderate",
+              "confidence": 0.85,
+              "bbox_pct": [
+                35,
+                26,
+                59,
+                47
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 1 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crack",
+            "part": "rear_windshield",
+            "severity": "moderate",
+            "confidence": 0.85,
+            "bbox_pct": [
+              35,
+              26,
+              59,
+              47
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crack",
+      "part": "rear_windshield",
+      "severity": "moderate",
+      "cost_min": 12000,
+      "cost_max": 35000
+    }
+  ],
+  "total_min": 12000,
+  "total_max": 35000,
+  "total_elapsed_s": 30.81,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

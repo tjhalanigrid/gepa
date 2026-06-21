@@ -43,15 +43,77 @@ logger = logging.getLogger(__name__)
 
 # ── Valid vocabulary ──────────────────────────────────────────────────────────
 
-VALID_DAMAGE_CLASSES = frozenset({
-    "dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat",
-})
-VALID_PARTS = frozenset({
-    "front_bumper", "rear_bumper", "hood", "windshield", "rear_windshield",
-    "front_left_door", "front_right_door", "rear_left_door", "rear_right_door",
-    "left_fender", "right_fender", "trunk_lid", "roof_panel",
-    "headlight", "taillight", "tire",
-})
+# VALID_DAMAGE_CLASSES = frozenset({
+#     "dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat"
+# })
+
+VALID_DAMAGE_CLASSES = {
+    "dent",
+    "scratch",
+    "crack",
+    "glass_shatter",
+    "lamp_broken",
+    "mirror_broken",
+    "paint_damage",
+    "scuff",
+    "bent",
+    "crumpled",
+    "missing_part",
+    "detached_part",
+    "tire_flat",
+    "wheel_damage",
+    "structural_damage",
+}
+# VALID_PARTS = frozenset({
+#     "front_bumper", "rear_bumper", "hood", "windshield", "rear_windshield",
+#     "front_left_door", "front_right_door", "rear_left_door", "rear_right_door",
+#     "left_fender", "right_fender", "trunk_lid", "roof_panel",
+#     "headlight", "taillight", "tire",
+# })
+
+VALID_PARTS = {
+    "front_bumper",
+    "rear_bumper",
+    "hood",
+    "grill",
+    "windshield",
+    "rear_windshield",
+
+    "left_fender",
+    "right_fender",
+
+    "front_left_door",
+    "front_right_door",
+    "rear_left_door",
+    "rear_right_door",
+
+    "roof_panel",
+    "trunk_lid",
+    "tailgate",
+
+    "quarter_panel",
+
+    "headlight",
+    "taillight",
+    "fog_lamp",
+
+    "side_mirror",
+
+    "wheel",
+    "tire",
+
+    "front_left_window",
+    "front_right_window",
+    "rear_left_window",
+    "rear_right_window",
+    
+
+    "rocker_panel",
+
+    "radiator_support",
+}
+
+
 VALID_SEVERITY = frozenset({"minor", "moderate", "severe"})
 
 _CANONICAL_TOOLS = frozenset({
@@ -144,11 +206,17 @@ ANTI-HALLUCINATION RULES:
   • Be conservative on severity. When unsure, prefer the lower severity.
   • If the vehicle has no visible damage, Terminate with an empty damage_items list.
 
-Valid damage_type: dent | scratch | crack | glass_shatter | lamp_broken | tire_flat
-Valid part:        front_bumper | rear_bumper | hood | windshield | rear_windshield |
+Valid damage_type: dent | scratch | crack | glass_shatter | lamp_broken | tire_flat |
+                   mirror_broken | paint_damage | scuff | bent | crumpled |
+                   missing_part | detached_part | wheel_damage | structural_damage
+Valid part:        front_bumper | rear_bumper | hood | grill |
+                   windshield | rear_windshield |
+                   left_fender | right_fender |
                    front_left_door | front_right_door | rear_left_door | rear_right_door |
-                   left_fender | right_fender | trunk_lid | roof_panel |
-                   headlight | taillight | tire
+                   front_left_window | front_right_window | rear_left_window | rear_right_window |
+                   roof_panel | trunk_lid | tailgate | quarter_panel |
+                   headlight | taillight | fog_lamp | side_mirror |
+                   wheel | tire | rocker_panel | radiator_support
 Valid severity:    minor | moderate | severe
 
 OUTPUT ONLY THE JSON OBJECT. NO MARKDOWN. NO TEXT BEFORE OR AFTER IT.\
@@ -156,6 +224,70 @@ OUTPUT ONLY THE JSON OBJECT. NO MARKDOWN. NO TEXT BEFORE OR AFTER IT.\
 
 # ── Sub-task prompts ──────────────────────────────────────────────────────────
 
+# ── DAMAGE_DETECTION_PROMPT — split for GEPA ──────────────────────────────────
+# The prompt has two zones:
+#
+#   _DETECTION_STATIC_SCHEMA  🔒 FROZEN. Built from the VALID_* sets so it can never
+#       drift from the code. Holds the output JSON keys, the class/part/severity
+#       enums, and the bbox_pct convention. The parser (_extract_json_objects) and
+#       backend (_pct_to_px) depend on every token here. GEPA must NEVER edit this.
+#
+#   DETECTION_GUIDANCE        ✏️ MUTABLE. The instructional wording — thoroughness,
+#       severity rubric, bbox-accuracy rules. This is the ONLY part GEPA rewrites.
+#
+# The live prompt = DETECTION_GUIDANCE + _DETECTION_STATIC_SCHEMA. GEPA proposes a new
+# DETECTION_GUIDANCE each round and reassembles; the frozen schema is appended every
+# time, so the vocabulary and JSON contract are guaranteed intact.
+
+_DETECTION_STATIC_SCHEMA = (
+    "Respond with ONLY this JSON (no markdown, no preamble):\n"
+    "{\n"
+    '  "detections": [\n'
+    "    {\n"
+    '      "class":       "dent",\n'
+    '      "confidence":  0.85,\n'
+    '      "bbox_pct":    [10, 20, 40, 60],\n'
+    '      "part":        "front_bumper",\n'
+    '      "severity":    "moderate",\n'
+    '      "description": "crumple deformation on lower bumper"\n'
+    "    }\n"
+    "  ]\n"
+    "}\n\n"
+    "Field values — use EXACTLY these tokens:\n"
+    "  class      -> one of: " + " | ".join(sorted(VALID_DAMAGE_CLASSES)) + "\n"
+    "  part       -> one of: " + " | ".join(sorted(VALID_PARTS)) + "\n"
+    "  severity   -> one of: minor | moderate | severe\n"
+    "  confidence -> your visual certainty 0.0-1.0\n"
+    "  bbox_pct   -> [x1, y1, x2, y2] as image PERCENTAGE coordinates 0-100, where\n"
+    "                x1,y1 = TOP-LEFT corner and x2,y2 = BOTTOM-RIGHT corner.\n"
+    "  description -> one-sentence visual description of what you see\n"
+    'If no damage is visible: {"detections": []}'
+)
+
+DETECTION_GUIDANCE = """\
+Inspect this vehicle image carefully.
+Identify ALL visible damage regions — be thorough, do not miss any.
+
+Severity guidance:
+  minor    = surface only (light scratch, paint scuff)
+  moderate = panel deformation, repair needed
+  severe   = structural damage, replacement needed
+
+BOUNDING-BOX ACCURACY — this matters a lot:
+  • The box must TIGHTLY hug ONLY the damaged area — like shrink-wrap. Do NOT draw a
+    big loose box around the whole panel or the whole car.
+  • Each damage gets its OWN distinct box at its OWN location. Do not stack several
+    near-identical boxes in one spot.
+  • The box must be ON THE CAR, over the damage. Never put it on the road, sky,
+    background, or empty space beside the car.
+  • Sanity-check: x1 < x2 and y1 < y2, and the centre of the box sits on the damage."""
+
+# ── LIVE PRODUCTION PROMPT ────────────────────────────────────────────────────
+# This is the EXACT proven original (JSON-example-first ordering) that produced rich,
+# thorough detections. Reordering it (guidance-first) regressed detection quality, so
+# production uses this verbatim. The DETECTION_GUIDANCE / _DETECTION_STATIC_SCHEMA
+# constants above are GEPA's experiment targets — when GEPA finds a validated better
+# guidance, swap it in here after A/B confirming it does not regress.
 DAMAGE_DETECTION_PROMPT = """\
 Inspect this vehicle image carefully.
 Identify ALL visible damage regions — be thorough, do not miss any.
@@ -175,14 +307,22 @@ Respond with ONLY this JSON (no markdown, no preamble):
 }
 
 Field rules:
-  class      → one of: dent | scratch | crack | glass_shatter | lamp_broken | tire_flat
+  class      → one of:
+               dent | scratch | crack | glass_shatter | lamp_broken | tire_flat |
+               mirror_broken | paint_damage | scuff | bent | crumpled |
+               missing_part | detached_part | wheel_damage | structural_damage
   confidence → your visual certainty 0.0–1.0
   bbox_pct   → [x1, y1, x2, y2] as image PERCENTAGE coordinates 0–100, where
                x1,y1 = TOP-LEFT corner and x2,y2 = BOTTOM-RIGHT corner.
-  part       → one of: front_bumper | rear_bumper | hood | windshield | rear_windshield |
+  part       → one of:
+               front_bumper | rear_bumper | hood | grill |
+               windshield | rear_windshield |
+               left_fender | right_fender |
                front_left_door | front_right_door | rear_left_door | rear_right_door |
-               left_fender | right_fender | trunk_lid | roof_panel |
-               headlight | taillight | tire
+               front_left_window | front_right_window | rear_left_window | rear_right_window |
+               roof_panel | trunk_lid | tailgate | quarter_panel |
+               headlight | taillight | fog_lamp | side_mirror |
+               wheel | tire | rocker_panel | radiator_support
   severity   → minor (surface only) | moderate (panel deformation, repair needed) |
                severe (structural damage, replacement needed)
   description → one-sentence visual description of what you see
@@ -405,8 +545,12 @@ def _resize_for_vlm(image_path: str, max_dim: int = 640) -> str:
         with Image.open(image_path) as img:
             img = img.convert("RGB")
             w, h = img.size
+            # Always re-encode to a clean JPEG before sending to Ollama — webp / odd
+            # encodings otherwise trigger HTTP 400 "Failed to load image or audio file".
             if max(w, h) <= max_dim:
-                return image_path
+                out = f"/tmp/vlm_r_{uuid.uuid4().hex[:8]}.jpg"
+                img.save(out, quality=92)
+                return out
             scale = max_dim / max(w, h)
             new_w, new_h = int(w * scale), int(h * scale)
             resized = img.resize((new_w, new_h), Image.LANCZOS)
@@ -653,11 +797,18 @@ class PiAgent:
     no SAM2 in the reasoning path (SAM2 is optionally used for segment_damage).
     """
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, few_shot_examples: str = "") -> None:
         self.config      = config
         self.vlm_cfg     = config.get("vlm", {})
         self.model       = self.vlm_cfg.get("model_id", "qwen3.5:9b")
         self.base_url    = self.vlm_cfg.get("ollama_base_url", "http://localhost:11434")
+        # Append human correction examples to the system prompt when available.
+        # This is the temporal prompt — gets smarter with every HITL correction.
+        self._system_prompt = (
+            CODEACT_SYSTEM_PROMPT + "\n" + few_shot_examples
+            if few_shot_examples.strip()
+            else CODEACT_SYSTEM_PROMPT
+        )
         self.temperature = float(self.vlm_cfg.get("temperature", 0.7))
         # Qwen3.5 best-practices sampling (instruct / non-thinking mode). Thinking
         # mode is disabled: it spends the whole token budget on <think> and never
@@ -716,7 +867,7 @@ class PiAgent:
 
         # Initial conversation: system prompt + raw vehicle image
         messages: List[dict] = [
-            {"role": "system", "content": CODEACT_SYSTEM_PROMPT},
+            {"role": "system", "content": self._system_prompt},
             {
                 "role": "user",
                 "content": (
@@ -1087,13 +1238,17 @@ class PiAgent:
 
     # ── VLM-powered tool implementations ─────────────────────────────────────
 
-    def _vlm_damage_detection(self, image_path: str) -> dict:
+    def _vlm_damage_detection(self, image_path: str, prompt_override: Optional[str] = None) -> dict:
         """
         VLM-only damage detection forward pass.
 
         Encodes the vehicle image, asks Ollama to locate and classify all damage,
         parses the JSON response, converts bbox_pct to pixel coords, draws
         coloured numbered boxes, and returns the annotated image + structured list.
+
+        prompt_override: if given, used instead of the module DAMAGE_DETECTION_PROMPT.
+            GEPA uses this to evaluate candidate detection prompts in isolation
+            without mutating module state.
         """
         # Higher resolution for this single call → tighter, better-placed boxes.
         vlm_path = _resize_for_vlm(image_path, self.detect_dim)
@@ -1102,7 +1257,7 @@ class PiAgent:
         messages = [
             {
                 "role": "user",
-                "content": DAMAGE_DETECTION_PROMPT,
+                "content": prompt_override or DAMAGE_DETECTION_PROMPT,
                 "images": [b64],
             }
         ]

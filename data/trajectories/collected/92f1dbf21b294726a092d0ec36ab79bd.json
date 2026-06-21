@@ -1,0 +1,296 @@
+{
+  "trajectory_id": "92f1dbf21b294726a092d0ec36ab79bd",
+  "image_path": "/private/var/folders/ck/z5x0f87n51g0pn_yrg4gyyp80000gn/T/vda_upload_e1nvee9l.webp",
+  "image_width": 1080,
+  "image_height": 1440,
+  "created_at": "2026-06-19T07:13:21.794685+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Initial full-vehicle scan to locate and classify all visible damage."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM found no damage (visual reasoning continues)",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_707145b0.jpg",
+      "observation_data": null,
+      "elapsed_s": 30.759
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            15,
+            20,
+            85,
+            65
+          ],
+          "reason": "Zoom into the front of the vehicle to assess damage severity and classify parts."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [15, 20, 85, 65] (pct)",
+      "observation_image_path": "/tmp/zoom_89b5f1b9.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.052
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            15,
+            40,
+            85,
+            70
+          ],
+          "reason": "Zoom into lower front bumper area to check for detached components and scuff marks."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [15, 40, 85, 70] (pct)",
+      "observation_image_path": "/tmp/zoom_691f3ef0.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.031
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            15,
+            20,
+            85,
+            40
+          ],
+          "reason": "Zoom into upper front section to assess hood deformation and windshield integrity."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [15, 20, 85, 40] (pct)",
+      "observation_image_path": "/tmp/zoom_d3876221.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.025
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "hood",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                18,
+                22,
+                78,
+                42
+              ]
+            },
+            {
+              "damage_type": "crumpled",
+              "part": "front_bumper",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                16,
+                38,
+                82,
+                72
+              ]
+            },
+            {
+              "damage_type": "detached_part",
+              "part": "front_bumper",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                16,
+                48,
+                82,
+                72
+              ]
+            },
+            {
+              "damage_type": "missing_part",
+              "part": "headlight",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                60,
+                34,
+                80,
+                52
+              ]
+            },
+            {
+              "damage_type": "missing_part",
+              "part": "taillight",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                16,
+                34,
+                38,
+                52
+              ]
+            },
+            {
+              "damage_type": "structural_damage",
+              "part": "radiator_support",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                16,
+                40,
+                82,
+                70
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 6 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "hood",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              18,
+              22,
+              78,
+              42
+            ]
+          },
+          {
+            "damage_type": "crumpled",
+            "part": "front_bumper",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              16,
+              38,
+              82,
+              72
+            ]
+          },
+          {
+            "damage_type": "detached_part",
+            "part": "front_bumper",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              16,
+              48,
+              82,
+              72
+            ]
+          },
+          {
+            "damage_type": "missing_part",
+            "part": "headlight",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              60,
+              34,
+              80,
+              52
+            ]
+          },
+          {
+            "damage_type": "missing_part",
+            "part": "taillight",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              16,
+              34,
+              38,
+              52
+            ]
+          },
+          {
+            "damage_type": "structural_damage",
+            "part": "radiator_support",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              16,
+              40,
+              82,
+              70
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "hood",
+      "severity": "severe",
+      "cost_min": 15000,
+      "cost_max": 45000
+    },
+    {
+      "damage": "crumpled",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 30000
+    },
+    {
+      "damage": "detached_part",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 8000,
+      "cost_max": 22000
+    },
+    {
+      "damage": "missing_part",
+      "part": "headlight",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 28000
+    },
+    {
+      "damage": "missing_part",
+      "part": "taillight",
+      "severity": "severe",
+      "cost_min": 6000,
+      "cost_max": 18000
+    },
+    {
+      "damage": "structural_damage",
+      "part": "radiator_support",
+      "severity": "severe",
+      "cost_min": 25000,
+      "cost_max": 65000
+    }
+  ],
+  "total_min": 74000,
+  "total_max": 208000,
+  "total_elapsed_s": 77.5,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

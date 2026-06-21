@@ -1,0 +1,172 @@
+{
+  "trajectory_id": "613528eee7c245ac8e4834bed7106f8b",
+  "image_path": "/private/var/folders/ck/z5x0f87n51g0pn_yrg4gyyp80000gn/T/vda_upload_0yootrno.jpg",
+  "image_width": 1000,
+  "image_height": 666,
+  "created_at": "2026-06-17T06:02:25.231525+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "To detect and locate all visible damage on the vehicle."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 5 damage region(s): 1× crack, 3× dent, 1× scratch",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_b1899e38.jpg",
+      "observation_data": null,
+      "elapsed_s": 17.761
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            10,
+            45,
+            60,
+            85
+          ],
+          "reason": "Confirming dent on front bumper and scratch extent."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [10, 45, 60, 85] (pct)",
+      "observation_image_path": "/tmp/zoom_52264919.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.02
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            30,
+            20,
+            70,
+            60
+          ],
+          "reason": "Verifying crack in headlight assembly integrity."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [30, 20, 70, 60] (pct)",
+      "observation_image_path": "/tmp/zoom_9a9fa230.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.01
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            50,
+            15,
+            90,
+            45
+          ],
+          "reason": "Checking dent on left fender and door alignment damage."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [50, 15, 90, 45] (pct)",
+      "observation_image_path": "/tmp/zoom_ef5e9279.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.013
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "dent",
+              "part": "left_fender",
+              "severity": "moderate",
+              "confidence": 0.95,
+              "bbox_pct": [
+                30,
+                20,
+                70,
+                60
+              ]
+            },
+            {
+              "damage_type": "scratch",
+              "part": "front_right_door",
+              "severity": "minor",
+              "confidence": 0.88,
+              "bbox_pct": [
+                45,
+                15,
+                95,
+                45
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 2 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "dent",
+            "part": "left_fender",
+            "severity": "moderate",
+            "confidence": 0.95,
+            "bbox_pct": [
+              30,
+              20,
+              70,
+              60
+            ]
+          },
+          {
+            "damage_type": "scratch",
+            "part": "front_right_door",
+            "severity": "minor",
+            "confidence": 0.88,
+            "bbox_pct": [
+              45,
+              15,
+              95,
+              45
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "dent",
+      "part": "left_fender",
+      "severity": "moderate",
+      "cost_min": 8000,
+      "cost_max": 20000
+    },
+    {
+      "damage": "scratch",
+      "part": "front_right_door",
+      "severity": "minor",
+      "cost_min": 3500,
+      "cost_max": 9000
+    }
+  ],
+  "total_min": 11500,
+  "total_max": 29000,
+  "total_elapsed_s": 52.38,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

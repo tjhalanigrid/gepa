@@ -39,12 +39,72 @@ from pipeline.schema import (
 logger = logging.getLogger(__name__)
 
 
-VALID_DAMAGE_CLASSES = {"dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat"}
+# VALID_DAMAGE_CLASSES = {"dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat"}
+
+VALID_DAMAGE_CLASSES = {
+    "grille",
+    "front_left_quarter_panel",
+    "front_right_quarter_panel",
+    "side_mirror",
+    "radiator_support",
+    "a_pillar",
+    "b_pillar",
+    "c_pillar",
+    "rocker_panel",
+    "quarter_panel",
+    "tailgate",
+    "license_plate",
+    "fog_lamp",
+    "wheel",
+}
+
+
+# VALID_PARTS = {
+#     "front_bumper", "rear_bumper", "hood", "windshield", "rear_windshield",
+#     "front_left_door", "front_right_door", "rear_left_door", "rear_right_door",
+#     "left_fender", "right_fender", "trunk_lid", "roof_panel",
+#     "headlight", "taillight", "tire",
+# }
+
+
 VALID_PARTS = {
-    "front_bumper", "rear_bumper", "hood", "windshield", "rear_windshield",
-    "front_left_door", "front_right_door", "rear_left_door", "rear_right_door",
-    "left_fender", "right_fender", "trunk_lid", "roof_panel",
-    "headlight", "taillight", "tire",
+    "front_bumper",
+    "rear_bumper",
+    "hood",
+    "grille",
+    "windshield",
+    "rear_windshield",
+
+    "left_fender",
+    "right_fender",
+
+    "front_left_door",
+    "front_right_door",
+    "rear_left_door",
+    "rear_right_door",
+
+    "roof_panel",
+    "trunk_lid",
+    "tailgate",
+
+    "quarter_panel",
+
+    "headlight",
+    "taillight",
+    "fog_lamp",
+
+    "side_mirror",
+
+    "wheel",
+    "tire",
+
+    "a_pillar",
+    "b_pillar",
+    "c_pillar",
+
+    "rocker_panel",
+
+    "radiator_support",
 }
 VALID_SEVERITY = {"minor", "moderate", "severe"}
 
@@ -127,8 +187,9 @@ def _save_trajectory(
     total_max: int,
     elapsed: float,
     model_id: str,
+    raw_dir: str = "data/trajectories/collected",
 ) -> None:
-    """Save raw trajectory to data/trajectories/raw/ (trajectory_filter promotes it)."""
+    """Save raw trajectory to the configured collection folder (trajectory_filter promotes it)."""
     from pipeline.schema import Trajectory
 
     traj = Trajectory(
@@ -146,7 +207,7 @@ def _save_trajectory(
         filter_status="unfiltered",
     )
 
-    raw_dir = Path("data/trajectories/raw")
+    raw_dir = Path(raw_dir)
     raw_dir.mkdir(parents=True, exist_ok=True)
     out = raw_dir / f"{traj.trajectory_id}.json"
     out.write_text(traj.model_dump_json(indent=2))
@@ -183,8 +244,9 @@ def _iou(a: list, b: list) -> float:
 def _pct_to_px(bbox_pct: list, w: int, h: int) -> list:
     """
     Convert a VLM bbox_pct (0–100) to pixel coords, hardened against the VLM's
-    unreliable geometry: clamp to range, fix corner ordering, and enforce a minimum
-    box size so a degenerate/flat box (e.g. y1==y2) never renders as a line.
+    unreliable geometry: clamp to range, fix corner ordering, enforce a minimum box
+    size so a degenerate/flat box never renders as a line, and clamp extreme aspect
+    ratios so a junk coordinate never renders as a full-width "ground strip".
     """
     try:
         p = [max(0.0, min(100.0, float(v))) for v in bbox_pct[:4]]
@@ -199,6 +261,20 @@ def _pct_to_px(bbox_pct: list, w: int, h: int) -> list:
         cx = (x1 + x2) / 2; x1, x2 = cx - min_w / 2, cx + min_w / 2
     if y2 - y1 < min_h:
         cy = (y1 + y2) / 2; y1, y2 = cy - min_h / 2, cy + min_h / 2
+
+    # Aspect-ratio sanity clamp. A box >MAX_AR× wider-than-tall (or taller-than-wide)
+    # is almost always a bad VLM coordinate (the full-width flat strip pinned to the
+    # ground, or a sliver). Shrink the long side toward the box centre so it renders
+    # as a sane box — the finding and its cost are untouched, only the geometry is fixed.
+    MAX_AR = 3.5
+    bw, bh = x2 - x1, y2 - y1
+    if bh > 0 and bw / bh > MAX_AR:
+        new_bw = MAX_AR * bh
+        cx = (x1 + x2) / 2; x1, x2 = cx - new_bw / 2, cx + new_bw / 2
+    elif bw > 0 and bh / bw > MAX_AR:
+        new_bh = MAX_AR * bw
+        cy = (y1 + y2) / 2; y1, y2 = cy - new_bh / 2, cy + new_bh / 2
+
     x1, y1 = max(0.0, x1), max(0.0, y1)
     x2, y2 = min(float(w), x2), min(float(h), y2)
     return [int(x1), int(y1), int(x2), int(y2)]
@@ -371,6 +447,15 @@ def _merge_union(detections_with_bbox: list, sam2_boxes: list) -> list:
     return merged
 
 
+def _label_collides(rect: tuple, placed: list) -> bool:
+    """True if label rect (x1,y1,x2,y2) overlaps any already-placed label rect."""
+    ax1, ay1, ax2, ay2 = rect
+    for bx1, by1, bx2, by2 in placed:
+        if ax1 < bx2 and bx1 < ax2 and ay1 < by2 and by1 < ay2:
+            return True
+    return False
+
+
 def _draw_boxes(image_path: str, dets: list, out_subdir: str, color_by: str = "class") -> str:
     """Draw numbered boxes (dicts with bbox/damage/index/source) → saved JPEG path."""
     import cv2
@@ -378,6 +463,7 @@ def _draw_boxes(image_path: str, dets: list, out_subdir: str, color_by: str = "c
     if img is None:
         return image_path
     h, w = img.shape[:2]
+    placed_labels: list = []   # collision-avoidance for label backgrounds
     for d in dets:
         bbox = d["bbox"] if isinstance(d, dict) else d.bbox
         if not bbox or all(float(v) == 0.0 for v in bbox):
@@ -390,11 +476,36 @@ def _draw_boxes(image_path: str, dets: list, out_subdir: str, color_by: str = "c
         color = (_SOURCE_COLORS_BGR.get(src, (128, 128, 128)) if color_by == "source"
                  else _CLASS_COLORS_BGR.get(dmg, (128, 128, 128)))
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-        label = f"{idx}.{dmg}" if color_by == "source" else f"{idx}.{dmg}"
+        label = f"{idx}.{dmg}"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
-        ly = max(y1 - th - 4, 0)
-        cv2.rectangle(img, (x1, ly), (x1 + tw + 4, ly + th + 4), color, -1)
-        cv2.putText(img, label, (x1 + 2, ly + th + 1),
+        lw, lh = tw + 4, th + 4
+
+        # Candidate label positions, in order of preference: above the box, then inside
+        # the top, then below the box. Pick the first that doesn't collide with an
+        # already-drawn label and stays on-canvas — fixes the overlapping-label garble.
+        candidates = [
+            (x1, max(y1 - lh, 0)),                       # above
+            (x1, min(y1 + 1, h - lh)),                   # inside top
+            (x1, min(y2 + 1, h - lh)),                   # below
+        ]
+        lx, ly = candidates[0]
+        for cx, cy in candidates:
+            cx = min(cx, w - lw)
+            rect = (cx, cy, cx + lw, cy + lh)
+            if not _label_collides(rect, placed_labels):
+                lx, ly = cx, cy
+                break
+        else:
+            # All collide — nudge down in steps until clear or we run out of canvas.
+            cx = min(x1, w - lw)
+            cy = max(y1 - lh, 0)
+            while _label_collides((cx, cy, cx + lw, cy + lh), placed_labels) and cy < h - lh:
+                cy += lh
+            lx, ly = cx, cy
+
+        placed_labels.append((lx, ly, lx + lw, ly + lh))
+        cv2.rectangle(img, (lx, ly), (lx + lw, ly + lh), color, -1)
+        cv2.putText(img, label, (lx + 2, ly + th + 1),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
     out_dir = Path(out_subdir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -460,12 +571,42 @@ def run(
 
     logger.info("Stage 1: PiAgent brain loop (Qwen via Ollama, free-form tools)")
     from models.vlm_reasoning.pi_agent import PiAgent
-    agent    = PiAgent(config)
+    from pipeline.feedback_reader import get_few_shot_examples
+    few_shot = get_few_shot_examples(
+        corrections_log_path=config.get("feedback", {}).get(
+            "corrections_log", "data/feedback/corrections_log.jsonl"
+        ),
+        n=5,
+    )
+    if few_shot:
+        logger.info("Temporal prompt: injecting few-shot corrections into system prompt")
+    agent    = PiAgent(config, few_shot_examples=few_shot)
     loop_out = agent.run(image_path=image_path, trajectory_steps=trajectory_steps)
     warnings_list.extend(loop_out["warnings"])
 
     vlm_damage_items = loop_out.get("damage_items", [])
     vlm_detections   = loop_out.get("vlm_detections", [])
+
+    # If the VLM ran run_damage_detection (found damage) but then Terminated with an
+    # empty/sparse map, don't throw those findings away — salvage them so the report
+    # reflects ALL detected damage instead of returning ₹0. The detection items carry
+    # the same fields (class→damage_type, part, severity, bbox_pct).
+    if not vlm_damage_items and vlm_detections:
+        vlm_damage_items = [
+            {
+                "damage_type": d.get("class", ""),
+                "part":        d.get("part", ""),
+                "severity":    d.get("severity", "minor"),
+                "confidence":  float(d.get("confidence", 0.0)),
+                "bbox_pct":    d.get("bbox_pct", [5, 5, 95, 95]),
+            }
+            for d in vlm_detections
+        ]
+        warnings_list.append(
+            f"SALVAGED_DETECTIONS: Terminate was empty but run_damage_detection found "
+            f"{len(vlm_detections)} damage region(s) — using those for the report."
+        )
+
     vlm_produced     = bool(vlm_damage_items)
 
     # ── Stage 2: detections_with_bbox from the VLM damage_items ─────────────────
@@ -531,10 +672,15 @@ def run(
     # Approval = image-based corroboration (the AI's two independent passes agree),
     # never cost. Escalate on no damage, or a final class its detection pass missed.
     det_classes = {str(d.get("class", "")).lower() for d in vlm_detections}
-    uncorroborated = [
-        it.get("damage_type") for it in vlm_damage_items
-        if det_classes and str(it.get("damage_type", "")).lower() not in det_classes
-    ]
+    # If VLM never called run_damage_detection, det_classes is empty — treat every
+    # Terminate item as uncorroborated rather than silently AUTO_APPROVING.
+    if not det_classes and vlm_produced:
+        uncorroborated = [it.get("damage_type") for it in vlm_damage_items]
+    else:
+        uncorroborated = [
+            it.get("damage_type") for it in vlm_damage_items
+            if str(it.get("damage_type", "")).lower() not in det_classes
+        ]
     if not vlm_produced:
         approval = "ESCALATE_TO_HUMAN"
     elif uncorroborated:
@@ -545,6 +691,17 @@ def run(
         )
     else:
         approval = "AUTO_APPROVED"
+
+    # TEMP: while collecting ground-truth corrections for GEPA, force EVERY report
+    # through human review — compulsory, irrespective of confidence/corroboration or
+    # whether any damage was found (config: approval.force_human_review).
+    if config.get("approval", {}).get("force_human_review", False):
+        if approval != "ESCALATE_TO_HUMAN":
+            warnings_list.append(
+                "FORCED_HUMAN_REVIEW: auto-approve disabled while collecting "
+                "ground-truth corrections (approval.force_human_review=true)."
+            )
+        approval = "ESCALATE_TO_HUMAN"
 
     iterations = _build_iterations(trajectory_steps)
     tool_log = [
@@ -570,6 +727,7 @@ def run(
         total_max  = total_max,
         elapsed    = elapsed,
         model_id   = config["vlm"]["model_id"],
+        raw_dir    = config.get("trajectory", {}).get("raw_dir", "data/trajectories/collected"),
     )
 
     return FinalDamageReport(

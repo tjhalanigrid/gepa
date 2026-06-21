@@ -24,12 +24,20 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-VALID_DAMAGE_CLASSES = {"dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat"}
+VALID_DAMAGE_CLASSES = {
+    "dent", "scratch", "crack", "glass_shatter", "lamp_broken", "tire_flat",
+    "mirror_broken", "paint_damage", "scuff", "bent", "crumpled",
+    "missing_part", "detached_part", "wheel_damage", "structural_damage",
+}
 VALID_PARTS = {
-    "front_bumper", "rear_bumper", "hood", "windshield", "rear_windshield",
+    "front_bumper", "rear_bumper", "hood", "grill",
+    "windshield", "rear_windshield",
+    "left_fender", "right_fender",
     "front_left_door", "front_right_door", "rear_left_door", "rear_right_door",
-    "left_fender", "right_fender", "trunk_lid", "roof_panel",
-    "headlight", "taillight", "tire"
+    "front_left_window", "front_right_window", "rear_left_window", "rear_right_window",
+    "roof_panel", "trunk_lid", "tailgate", "quarter_panel",
+    "headlight", "taillight", "fog_lamp", "side_mirror",
+    "wheel", "tire", "rocker_panel", "radiator_support",
 }
 COST_MIN_INR = 500
 COST_MAX_INR = 1_000_000

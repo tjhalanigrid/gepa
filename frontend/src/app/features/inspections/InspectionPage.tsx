@@ -5,6 +5,7 @@ import type { VehicleRegistration } from "../../types/vehicle";
 import {
   assessDamage,
   unwrapReport,
+  getSessionId,
   prettifyLabel,
   capitalize,
   formatCostRange,
@@ -12,8 +13,10 @@ import {
   jobMergedImageUrl,
   type FinalDamageReport,
   type DetectionWithBBox,
+  type DamagePartEntry,
 } from "../../lib/api";
 import { AnnotatedImage, CLASS_COLORS } from "./AnnotatedImage";
+import { ReviewPanel } from "./ReviewPanel";
 import { saveClaim, makeThumbnail, makeRemoteThumbnail, newClaimId, statusFromApproval } from "../../lib/claimsStore";
 
 type Step = "select" | "upload" | "analyze" | "report";
@@ -67,6 +70,9 @@ export function InspectionPage({ onNavigate, activeVehicle }: InspectionPageProp
   const [approval, setApproval] = useState<string>("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // TEMP human-review (GEPA ground-truth collection): set when a job escalates.
+  const [reviewSessionId, setReviewSessionId] = useState<string | null>(null);
+  const [reviewFindings, setReviewFindings] = useState<DamagePartEntry[]>([]);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -174,6 +180,8 @@ export function InspectionPage({ onNavigate, activeVehicle }: InspectionPageProp
     setMergedFailed(false);
     setImageView("boxes");
     setWarnings([]);
+    setReviewSessionId(null);
+    setReviewFindings([]);
 
     // Smooth indeterminate progress while the single VLM job runs (~40–70s).
     const ticker = setInterval(() => {
@@ -197,6 +205,11 @@ export function InspectionPage({ onNavigate, activeVehicle }: InspectionPageProp
         },
       });
       const report = unwrapReport(raw);
+
+      // If the job escalated to human review, expose the session for the ReviewPanel.
+      const sessionId = getSessionId(raw);
+      setReviewSessionId(sessionId);
+      setReviewFindings(report.damage_part_map);
 
       const findings = mapReport(report);
       const boxes = refineBoxes(report);
@@ -629,6 +642,14 @@ export function InspectionPage({ onNavigate, activeVehicle }: InspectionPageProp
                   <div style={{ fontSize: "22px", fontWeight: 800, color: "#0a0a0a" }}>{formatCostRange(totalMin, totalMax)}</div>
                   <div style={{ fontSize: "10px", color: "#888882" }}>Computed from COST_DB as of {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</div>
                 </div>
+
+                {/* TEMP: human review to collect GEPA ground truth (shown when escalated). */}
+                {reviewSessionId && (
+                  <ReviewPanel
+                    sessionId={reviewSessionId}
+                    initialFindings={reviewFindings}
+                  />
+                )}
               </div>
             )}
           </div>
