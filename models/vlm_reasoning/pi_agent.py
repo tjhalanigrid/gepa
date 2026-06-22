@@ -209,6 +209,7 @@ ANTI-HALLUCINATION RULES:
 Valid damage_type: dent | scratch | crack | glass_shatter | lamp_broken | tire_flat |
                    mirror_broken | paint_damage | scuff | bent | crumpled |
                    missing_part | detached_part | wheel_damage | structural_damage
+  ⚠ Use "crack" NOT "cracked" — exact spelling only, no variations.
 Valid part:        front_bumper | rear_bumper | hood | grill |
                    windshield | rear_windshield |
                    left_fender | right_fender |
@@ -266,21 +267,22 @@ _DETECTION_STATIC_SCHEMA = (
 
 DETECTION_GUIDANCE = """\
 Inspect this vehicle image carefully.
-Identify ALL visible damage regions — be thorough, do not miss any.
+Identify ALL visible damage regions — be thorough and precise, do not miss any.
 
 Severity guidance:
-  minor    = surface only (light scratch, paint scuff)
-  moderate = panel deformation, repair needed
-  severe   = structural damage, replacement needed
+  - minor = surface only (light scratch, paint scuff)
+  - moderate = panel deformation, repair needed
+  - severe = structural damage, replacement needed
 
-BOUNDING-BOX ACCURACY — this matters a lot:
-  • The box must TIGHTLY hug ONLY the damaged area — like shrink-wrap. Do NOT draw a
-    big loose box around the whole panel or the whole car.
-  • Each damage gets its OWN distinct box at its OWN location. Do not stack several
+BOUNDING-BOX ACCURACY – THIS MATTERS A LOT:
+  - The box must TIGHTLY hug ONLY the damaged area. Do NOT draw loose or overlapping boxes.
+  - Each distinct type of damage gets its OWN tight bounding box at its OWN location. Avoid stacking several
     near-identical boxes in one spot.
-  • The box must be ON THE CAR, over the damage. Never put it on the road, sky,
+  - Place each box ON THE CAR, over the exact damage. Never put it on the road, sky,
     background, or empty space beside the car.
-  • Sanity-check: x1 < x2 and y1 < y2, and the centre of the box sits on the damage."""
+  - Sanity-check: x1 < x2 and y1 < y2, with the centre of the box precisely within the damaged area.
+
+Focus especially on front areas; ensure you correctly distinguish between dents, crumples, structural damage, paint issues, and missing parts. Avoid missing any damage or incorrectly classifying it."""
 
 # ── LIVE PRODUCTION PROMPT ────────────────────────────────────────────────────
 # This is the EXACT proven original (JSON-example-first ordering) that produced rich,
@@ -1438,3 +1440,4 @@ class PiAgent:
         img_rgb.save(out, quality=90)
         logger.info(f"Part detection '{part_query}': {part_info}")
         return out
+ 

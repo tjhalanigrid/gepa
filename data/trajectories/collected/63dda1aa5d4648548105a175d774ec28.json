@@ -1,0 +1,79 @@
+{
+  "trajectory_id": "63dda1aa5d4648548105a175d774ec28",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/_rgb_e0f3c4a1ef67472e89584c2289de10f6.png",
+  "image_width": 637,
+  "image_height": 444,
+  "created_at": "2026-06-21T12:34:26.428764+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {}
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 1 damage region(s): 1× dent",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_fa2f825e.jpg",
+      "observation_data": null,
+      "elapsed_s": 6.867
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "dent",
+              "part": "front_bumper",
+              "severity": "minor",
+              "confidence": 0.95,
+              "bbox_pct": [
+                82,
+                63,
+                100,
+                87
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 1 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "dent",
+            "part": "front_bumper",
+            "severity": "minor",
+            "confidence": 0.95,
+            "bbox_pct": [
+              82,
+              63,
+              100,
+              87
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "dent",
+      "part": "front_bumper",
+      "severity": "minor",
+      "cost_min": 8000,
+      "cost_max": 25000
+    }
+  ],
+  "total_min": 8000,
+  "total_max": 25000,
+  "total_elapsed_s": 21.96,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

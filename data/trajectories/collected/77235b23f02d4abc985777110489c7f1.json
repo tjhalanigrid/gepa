@@ -1,0 +1,152 @@
+{
+  "trajectory_id": "77235b23f02d4abc985777110489c7f1",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/fa0c53de9425464ba4112ee519172429.jpg",
+  "image_width": 629,
+  "image_height": 471,
+  "created_at": "2026-06-21T12:25:13.267169+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Initial scan of the vehicle for all visible damage."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 2 damage region(s): 1× crumpled, 1× dent",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_cf7915f8.jpg",
+      "observation_data": null,
+      "elapsed_s": 9.798
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            60,
+            45,
+            92,
+            78
+          ],
+          "reason": "Confirming the extent and severity of damage on front_left_door."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [60, 45, 92, 78] (pct)",
+      "observation_image_path": "/tmp/zoom_d7eb1232.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.009
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            30,
+            15,
+            60,
+            42
+          ],
+          "reason": "Inspecting crumpled area on quarter_panel for accurate severity assessment."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [30, 15, 60, 42] (pct)",
+      "observation_image_path": "/tmp/zoom_9ede8510.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.005
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "quarter_panel",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                60,
+                45,
+                92,
+                78
+              ]
+            },
+            {
+              "damage_type": "dent",
+              "part": "front_left_door",
+              "severity": "moderate",
+              "confidence": 0.93,
+              "bbox_pct": [
+                30,
+                15,
+                60,
+                42
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 2 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "quarter_panel",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              60,
+              45,
+              92,
+              78
+            ]
+          },
+          {
+            "damage_type": "dent",
+            "part": "front_left_door",
+            "severity": "moderate",
+            "confidence": 0.93,
+            "bbox_pct": [
+              30,
+              15,
+              60,
+              42
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "quarter_panel",
+      "severity": "severe",
+      "cost_min": 15000,
+      "cost_max": 40000
+    },
+    {
+      "damage": "dent",
+      "part": "front_left_door",
+      "severity": "moderate",
+      "cost_min": 10000,
+      "cost_max": 30000
+    }
+  ],
+  "total_min": 25000,
+  "total_max": 70000,
+  "total_elapsed_s": 35.35,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

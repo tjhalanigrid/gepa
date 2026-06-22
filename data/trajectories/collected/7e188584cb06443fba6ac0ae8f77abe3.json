@@ -1,0 +1,81 @@
+{
+  "trajectory_id": "7e188584cb06443fba6ac0ae8f77abe3",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/_rgb_ae8f3818a2844593bd6a81976bcd1401.png",
+  "image_width": 881,
+  "image_height": 476,
+  "created_at": "2026-06-21T12:21:53.407512+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "detecting all visible damage on the vehicle"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 1 damage region(s): 1× dent",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_a1be9b64.jpg",
+      "observation_data": null,
+      "elapsed_s": 7.558
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "dent",
+              "part": "rear_left_door",
+              "severity": "moderate",
+              "confidence": 0.95,
+              "bbox_pct": [
+                42,
+                38,
+                67,
+                100
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 1 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "dent",
+            "part": "rear_left_door",
+            "severity": "moderate",
+            "confidence": 0.95,
+            "bbox_pct": [
+              42,
+              38,
+              67,
+              100
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "dent",
+      "part": "rear_left_door",
+      "severity": "moderate",
+      "cost_min": 10000,
+      "cost_max": 30000
+    }
+  ],
+  "total_min": 10000,
+  "total_max": 30000,
+  "total_elapsed_s": 22.83,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

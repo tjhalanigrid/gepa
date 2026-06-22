@@ -1,0 +1,73 @@
+{
+  "trajectory_id": "77c8670877e7470f897e1f4cd3a11ce1",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/_rgb_db18583f96904da2b391442d266ab39b.png",
+  "image_width": 713,
+  "image_height": 540,
+  "created_at": "2026-06-21T12:57:35.040951+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Initial scan of the vehicle's exterior."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 1 damage region(s): 1× dent",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_08b607bf.jpg",
+      "observation_data": null,
+      "elapsed_s": 6.549
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            10,
+            58,
+            60,
+            92
+          ],
+          "reason": "Verify the dent on front bumper for precise severity and part classification."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [10, 58, 60, 92] (pct)",
+      "observation_image_path": "/tmp/zoom_dcefa32a.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.019
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {}
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 0 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": []
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "dent",
+      "part": "front_bumper",
+      "severity": "moderate",
+      "cost_min": 8000,
+      "cost_max": 25000
+    }
+  ],
+  "total_min": 8000,
+  "total_max": 25000,
+  "total_elapsed_s": 23.1,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

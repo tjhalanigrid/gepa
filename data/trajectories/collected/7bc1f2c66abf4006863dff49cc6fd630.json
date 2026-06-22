@@ -1,0 +1,101 @@
+{
+  "trajectory_id": "7bc1f2c66abf4006863dff49cc6fd630",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/_rgb_af5d67659adf46f9abcb90da4e415886.png",
+  "image_width": 710,
+  "image_height": 347,
+  "created_at": "2026-06-21T12:55:03.275357+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "initial detection"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 1 damage region(s): 1× crumpled",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_81b33421.jpg",
+      "observation_data": null,
+      "elapsed_s": 5.997
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            85,
+            30,
+            97,
+            62
+          ],
+          "reason": "verify crumpled extent on front bumper"
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [85, 30, 97, 62] (pct)",
+      "observation_image_path": "/tmp/zoom_36e3ef85.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.014
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "front_bumper",
+              "severity": "moderate",
+              "confidence": 0.92,
+              "bbox_pct": [
+                85,
+                30,
+                97,
+                62
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 1 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "front_bumper",
+            "severity": "moderate",
+            "confidence": 0.92,
+            "bbox_pct": [
+              85,
+              30,
+              97,
+              62
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "front_bumper",
+      "severity": "moderate",
+      "cost_min": 10000,
+      "cost_max": 30000
+    }
+  ],
+  "total_min": 10000,
+  "total_max": 30000,
+  "total_elapsed_s": 23.97,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

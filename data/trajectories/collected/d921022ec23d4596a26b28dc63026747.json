@@ -1,0 +1,245 @@
+{
+  "trajectory_id": "d921022ec23d4596a26b28dc63026747",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/_rgb_230a70979c87492aa6e7daaebff122b1.png",
+  "image_width": 637,
+  "image_height": 440,
+  "created_at": "2026-06-21T12:13:16.694624+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Identify and locate all visible damage on the vehicle."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 5 damage region(s): 2× crack, 1× crumpled, 1× dent, 1× paint_damage",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_1dc8a752.jpg",
+      "observation_data": null,
+      "elapsed_s": 17.463
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            60,
+            450,
+            930,
+            850
+          ],
+          "reason": "Verify severity and classification of front bumper damage."
+        }
+      },
+      "observation_type": "error",
+      "observation_summary": "bbox too large to be a useful zoom",
+      "observation_image_path": null,
+      "observation_data": null,
+      "elapsed_s": 0.002
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            720,
+            460,
+            910,
+            680
+          ],
+          "reason": "Verify crack on grill area."
+        }
+      },
+      "observation_type": "error",
+      "observation_summary": "bbox too large to be a useful zoom",
+      "observation_image_path": null,
+      "observation_data": null,
+      "elapsed_s": 0.0
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "front_bumper",
+              "severity": "severe",
+              "confidence": 0.92,
+              "bbox_pct": [
+                65,
+                480,
+                930,
+                780
+              ]
+            },
+            {
+              "damage_type": "crack",
+              "part": "grill",
+              "severity": "moderate",
+              "confidence": 0.85,
+              "bbox_pct": [
+                720,
+                460,
+                810,
+                680
+              ]
+            },
+            {
+              "damage_type": "dent",
+              "part": "hood",
+              "severity": "moderate",
+              "confidence": 0.78,
+              "bbox_pct": [
+                30,
+                50,
+                90,
+                250
+              ]
+            },
+            {
+              "damage_type": "paint_damage",
+              "part": "front_bumper",
+              "severity": "minor",
+              "confidence": 0.82,
+              "bbox_pct": [
+                60,
+                750,
+                100,
+                830
+              ]
+            },
+            {
+              "damage_type": "crack",
+              "part": "hood",
+              "severity": "minor",
+              "confidence": 0.8,
+              "bbox_pct": [
+                40,
+                120,
+                90,
+                160
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 5 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "front_bumper",
+            "severity": "severe",
+            "confidence": 0.92,
+            "bbox_pct": [
+              65,
+              480,
+              930,
+              780
+            ]
+          },
+          {
+            "damage_type": "crack",
+            "part": "grill",
+            "severity": "moderate",
+            "confidence": 0.85,
+            "bbox_pct": [
+              720,
+              460,
+              810,
+              680
+            ]
+          },
+          {
+            "damage_type": "dent",
+            "part": "hood",
+            "severity": "moderate",
+            "confidence": 0.78,
+            "bbox_pct": [
+              30,
+              50,
+              90,
+              250
+            ]
+          },
+          {
+            "damage_type": "paint_damage",
+            "part": "front_bumper",
+            "severity": "minor",
+            "confidence": 0.82,
+            "bbox_pct": [
+              60,
+              750,
+              100,
+              830
+            ]
+          },
+          {
+            "damage_type": "crack",
+            "part": "hood",
+            "severity": "minor",
+            "confidence": 0.8,
+            "bbox_pct": [
+              40,
+              120,
+              90,
+              160
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "front_bumper",
+      "severity": "severe",
+      "cost_min": 10000,
+      "cost_max": 30000
+    },
+    {
+      "damage": "crack",
+      "part": "grill",
+      "severity": "moderate",
+      "cost_min": 3000,
+      "cost_max": 8000
+    },
+    {
+      "damage": "dent",
+      "part": "hood",
+      "severity": "moderate",
+      "cost_min": 12000,
+      "cost_max": 35000
+    },
+    {
+      "damage": "paint_damage",
+      "part": "front_bumper",
+      "severity": "minor",
+      "cost_min": 4000,
+      "cost_max": 10000
+    },
+    {
+      "damage": "crack",
+      "part": "hood",
+      "severity": "minor",
+      "cost_min": 8000,
+      "cost_max": 22000
+    }
+  ],
+  "total_min": 37000,
+  "total_max": 105000,
+  "total_elapsed_s": 76.35,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}
