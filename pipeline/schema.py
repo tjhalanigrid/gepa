@@ -53,10 +53,30 @@ class DamagePartEntry(BaseModel):
     cost_max: int              # INR
 
 
+class InternalComponentEntry(BaseModel):
+    """A single internal component with its damage type and cost estimate."""
+    component: str      # e.g. "radiator"
+    damage_type: str    # e.g. "crumpled"
+    severity: str       # inherited from exterior damage severity
+    cost_min: int       # INR
+    cost_max: int       # INR
+
+
+class InternalDamageInference(BaseModel):
+    """Internal components likely damaged based on exterior part + severity."""
+    exterior_part: str                              # e.g. "hood"
+    exterior_severity: str                          # "moderate" | "severe"
+    likely_internal: List[str]                      # raw component names
+    costed_components: List[InternalComponentEntry] = Field(default_factory=list)
+    subtotal_min: int = 0                           # INR sum of all internal components
+    subtotal_max: int = 0
+
+
 class FinalDamageReport(BaseModel):
     """Top-level output of pipeline/orchestrator.py::run()."""
     image_path: str
     damage_part_map: List[DamagePartEntry]
+    internal_damage_inferences: List[InternalDamageInference] = Field(default_factory=list)
     detections_with_bbox: List["DetectionWithBBox"] = Field(default_factory=list)
     # Merged union (VLM ∪ SAM2) findings as source-tagged boxes for the UI.
     merged_detections: List[Dict[str, Any]] = Field(default_factory=list)
@@ -268,6 +288,7 @@ class TrajectoryStep(BaseModel):
     observation_summary: str
     observation_image_path: Optional[str] = None
     observation_data: Optional[Dict] = None
+    thought: Optional[str] = None       # VLM's reasoning for this step
     elapsed_s: float
 
 

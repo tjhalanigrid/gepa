@@ -1,0 +1,183 @@
+{
+  "trajectory_id": "ea02726b29394d198e75e41cf95b4cd1",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/bc1840c106ec4b16b37de9e44fab5bd7.jpg",
+  "image_width": 3264,
+  "image_height": 2448,
+  "created_at": "2026-06-23T02:02:44.226722+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "to locate and classify all visible damage on the front of this orange Ford."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 3 damage region(s): 1× crumpled, 1× dent, 1× missing_part",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_55b6c415.jpg",
+      "observation_data": null,
+      "elapsed_s": 20.646
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            10,
+            25,
+            45,
+            65
+          ],
+          "reason": "to verify hood dent severity and exact location."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [10, 25, 45, 65] (pct)",
+      "observation_image_path": "/tmp/zoom_0322771b.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.04
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "zoom_region",
+        "arguments": {
+          "bbox": [
+            30,
+            40,
+            70,
+            80
+          ],
+          "reason": "to confirm grill is missing or detached part."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "Zoomed into region [30, 40, 70, 80] (pct)",
+      "observation_image_path": "/tmp/zoom_0a7f4196.jpg",
+      "observation_data": null,
+      "elapsed_s": 0.047
+    },
+    {
+      "turn_index": 2,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "hood",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                10,
+                25,
+                45,
+                65
+              ]
+            },
+            {
+              "damage_type": "missing_part",
+              "part": "grill",
+              "severity": "moderate",
+              "confidence": 0.93,
+              "bbox_pct": [
+                30,
+                40,
+                70,
+                80
+              ]
+            },
+            {
+              "damage_type": "dent",
+              "part": "hood",
+              "severity": "moderate",
+              "confidence": 0.92,
+              "bbox_pct": [
+                15,
+                30,
+                40,
+                60
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 3 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "hood",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              10,
+              25,
+              45,
+              65
+            ]
+          },
+          {
+            "damage_type": "missing_part",
+            "part": "grill",
+            "severity": "moderate",
+            "confidence": 0.93,
+            "bbox_pct": [
+              30,
+              40,
+              70,
+              80
+            ]
+          },
+          {
+            "damage_type": "dent",
+            "part": "hood",
+            "severity": "moderate",
+            "confidence": 0.92,
+            "bbox_pct": [
+              15,
+              30,
+              40,
+              60
+            ]
+          }
+        ]
+      },
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "hood",
+      "severity": "severe",
+      "cost_min": 15000,
+      "cost_max": 45000
+    },
+    {
+      "damage": "missing_part",
+      "part": "grill",
+      "severity": "moderate",
+      "cost_min": 5000,
+      "cost_max": 15000
+    },
+    {
+      "damage": "dent",
+      "part": "hood",
+      "severity": "moderate",
+      "cost_min": 12000,
+      "cost_max": 35000
+    }
+  ],
+  "total_min": 32000,
+  "total_max": 95000,
+  "total_elapsed_s": 47.26,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

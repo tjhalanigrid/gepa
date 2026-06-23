@@ -20,6 +20,7 @@ This module owns:
   - Approval gate + FinalDamageReport construction + trajectory saving
 """
 
+import json
 import logging
 import time
 import uuid
@@ -212,6 +213,81 @@ def _save_trajectory(
     out = raw_dir / f"{traj.trajectory_id}.json"
     out.write_text(traj.model_dump_json(indent=2))
     logger.info(f"Trajectory saved: {out}")
+
+
+def _save_reasoning_log(
+    image_path: str,
+    steps: list,
+    final_damage_map: list,
+    internal_inference_objs: list,
+    approval: str,
+    warnings: list,
+    elapsed: float,
+    log_dir: str = "data/reasoning_logs",
+) -> None:
+    """
+    Save a human-readable reasoning log showing the full VLM thought process:
+    each iteration's thought, tool called, why, and what it returned.
+    Saved to data/reasoning_logs/<timestamp>_<image_stem>.json
+    """
+    out_dir = Path(log_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stem  = Path(image_path).stem[:20]
+    out   = out_dir / f"{stamp}_{stem}.json"
+
+    log = {
+        "image_path": image_path,
+        "timestamp":  datetime.now(timezone.utc).isoformat(),
+        "total_elapsed_s": elapsed,
+        "approval_decision": approval,
+        "reasoning_steps": [
+            {
+                "step":       s.turn_index,
+                "thought":    s.thought or "",
+                "tool":       s.action.name,
+                "tool_args":  s.action.arguments,
+                "result":     s.observation_summary,
+                "result_ok":  s.observation_type != "error",
+                "elapsed_s":  s.elapsed_s,
+            }
+            for s in steps
+        ],
+        "final_damage_map": [
+            {
+                "damage":    e.damage,
+                "part":      e.part,
+                "severity":  e.severity,
+                "cost_min":  e.cost_min,
+                "cost_max":  e.cost_max,
+            }
+            for e in final_damage_map
+        ],
+        "internal_inferences": [
+            {
+                "exterior_part":     obj.exterior_part,
+                "exterior_severity": obj.exterior_severity,
+                "subtotal_min":      obj.subtotal_min,
+                "subtotal_max":      obj.subtotal_max,
+                "components": [
+                    {
+                        "component":   c.component,
+                        "damage_type": c.damage_type,
+                        "severity":    c.severity,
+                        "cost_min":    c.cost_min,
+                        "cost_max":    c.cost_max,
+                    }
+                    for c in obj.costed_components
+                ],
+            }
+            for obj in internal_inference_objs
+        ],
+        "warnings": warnings,
+    }
+
+    out.write_text(json.dumps(log, indent=2))
+    logger.info(f"Reasoning log saved: {out}")
 
 
 # ── Backend post-processing helpers (deterministic — no LLM) ────────────────────
@@ -584,8 +660,9 @@ def run(
     loop_out = agent.run(image_path=image_path, trajectory_steps=trajectory_steps)
     warnings_list.extend(loop_out["warnings"])
 
-    vlm_damage_items = loop_out.get("damage_items", [])
-    vlm_detections   = loop_out.get("vlm_detections", [])
+    vlm_damage_items    = loop_out.get("damage_items", [])
+    vlm_detections      = loop_out.get("vlm_detections", [])
+    internal_inferences = loop_out.get("internal_inferences", [])
 
     # If the VLM ran run_damage_detection (found damage) but then Terminated with an
     # empty/sparse map, don't throw those findings away — salvage them so the report
@@ -730,21 +807,65 @@ def run(
         raw_dir    = config.get("trajectory", {}).get("raw_dir", "data/trajectories/collected"),
     )
 
+    from pipeline.schema import InternalDamageInference, InternalComponentEntry
+    from models.vlm_reasoning.internal_damage_db import lookup_internal_cost
+    internal_inference_objs = []
+    for i in internal_inferences:
+        severity        = i.get("exterior_severity", "moderate")
+        components      = i.get("likely_internal", [])
+        internal_costed = []
+        sub_min = sub_max = 0
+        for comp in components:
+            c = lookup_internal_cost(comp, severity)
+            internal_costed.append(InternalComponentEntry(
+                component   = comp,
+                damage_type = c["damage_type"],
+                severity    = severity,
+                cost_min    = c["cost_min"],
+                cost_max    = c["cost_max"],
+            ))
+            sub_min += c["cost_min"]
+            sub_max += c["cost_max"]
+        internal_inference_objs.append(InternalDamageInference(
+            exterior_part      = i.get("exterior_part", ""),
+            exterior_severity  = severity,
+            likely_internal    = components,
+            costed_components  = internal_costed,
+            subtotal_min       = sub_min,
+            subtotal_max       = sub_max,
+        ))
+
+    # Add internal damage costs to totals so the grand total covers everything.
+    total_min += sum(obj.subtotal_min for obj in internal_inference_objs)
+    total_max += sum(obj.subtotal_max for obj in internal_inference_objs)
+
+    _save_reasoning_log(
+        image_path              = image_path,
+        steps                   = trajectory_steps,
+        final_damage_map        = costed,
+        internal_inference_objs = internal_inference_objs,
+        approval                = approval,
+        warnings                = list(dict.fromkeys(warnings_list)),
+        elapsed                 = elapsed,
+        log_dir                 = config.get("trajectory", {}).get("reasoning_log_dir", "data/reasoning_logs"),
+    )
+
     return FinalDamageReport(
-        image_path           = image_path,
-        damage_part_map      = costed,
-        detections_with_bbox = detections_with_bbox,
-        merged_detections    = merged,
-        total_min            = total_min,
-        total_max            = total_max,
-        currency             = "INR",
-        approval_decision    = approval,
-        tool_call_log        = tool_log,
-        iterations           = iterations,
-        total_inference_s    = elapsed,
-        warnings             = list(dict.fromkeys(warnings_list)),
-        raw_vlm_response     = loop_out.get("raw_vlm_response"),
-        annotated_image_path = annotated_path,
-        merged_image_path    = merged_image_path,
-        masked_image_path    = masked_image_path,
+        image_path                  = image_path,
+        damage_part_map             = costed,
+        detections_with_bbox        = detections_with_bbox,
+        merged_detections           = merged,
+        internal_damage_inferences  = internal_inference_objs,
+        total_min                   = total_min,
+        total_max                   = total_max,
+        currency                    = "INR",
+        approval_decision           = approval,
+        tool_call_log               = tool_log,
+        iterations                  = iterations,
+        total_inference_s           = elapsed,
+        warnings                    = list(dict.fromkeys(warnings_list)),
+        raw_vlm_response            = loop_out.get("raw_vlm_response"),
+        annotated_image_path        = annotated_path,
+        merged_image_path           = merged_image_path,
+        masked_image_path           = masked_image_path,
     ).model_dump()

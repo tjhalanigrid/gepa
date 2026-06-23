@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 from models.vlm_reasoning.ollama_client import chat as ollama_chat, encode_image
+from models.vlm_reasoning.internal_damage_db import lookup_internal
 from pipeline.schema import CodeActTurn, CodeActAction, TrajectoryStep
 
 logger = logging.getLogger(__name__)
@@ -117,7 +118,8 @@ VALID_PARTS = {
 VALID_SEVERITY = frozenset({"minor", "moderate", "severe"})
 
 _CANONICAL_TOOLS = frozenset({
-    "run_damage_detection", "zoom_region", "detect_part", "Terminate",
+    "run_damage_detection", "zoom_region", "detect_part",
+    "infer_internal_damage", "Terminate",
 })
 _CANONICAL_TOOL_LOOKUP = {t.lower().replace(" ", "_"): t for t in _CANONICAL_TOOLS}
 
@@ -179,6 +181,12 @@ OPTIONAL TOOLS (use any, none, or repeat — your choice):
   Ask your vision to pinpoint a specific vehicle part you are unsure about.
   arguments: {"part_query": "e.g. left headlight", "reason": "why you are unsure"}
 
+• infer_internal_damage
+  When you detect MODERATE or SEVERE exterior damage, call this to get a list of
+  internal components that are likely also damaged (hidden beneath the exterior panel).
+  Only call for moderate/severe — do NOT call for minor cosmetic damage.
+  arguments: {"part": "the exterior part name e.g. hood", "severity": "moderate or severe"}
+
 • Terminate
   End and return your final findings.
   Each damage_item MUST include a bbox_pct (percentage coords 0–100) so the system
@@ -196,6 +204,10 @@ VERIFY BEFORE YOU FINISH (do not just detect-then-terminate):
     call zoom_region on it and look closer before you decide. Resolve your
     uncertainty list — don't guess.
   • If you are unsure WHICH part a damage is on, call detect_part.
+  • For EVERY damage that is moderate or severe, you MUST call infer_internal_damage
+    before Terminate. Internal components are hidden — they cannot be seen in the
+    image but are very likely damaged when the exterior is crumpled, bent, or missing.
+    Call it once per affected part: infer_internal_damage(part="hood", severity="moderate").
   • Only call Terminate once you have actually inspected the uncertain damages.
     A confident single-pass result is fine for clear, obvious damage — but do not
     terminate by reflex when something needs a closer look.
@@ -832,6 +844,8 @@ class PiAgent:
         # The VLM's own damage detections from run_damage_detection (for the UI
         # annotation + the approval corroboration check).
         self._vlm_detections: List[dict] = []
+        # Internal damage inferences collected during the loop (side-channel for orchestrator).
+        self._internal_inferences: List[dict] = []
 
     # ── Public entry point ────────────────────────────────────────────────────
 
@@ -855,8 +869,9 @@ class PiAgent:
         annotated_path: Optional[str] = None
         last_raw: Optional[str] = None
 
-        # Reset per-run VLM damage detections (used for approval corroboration).
+        # Reset per-run side-channels.
         self._vlm_detections = []
+        self._internal_inferences = []
 
         # Resize for VLM; tool helpers use the ORIGINAL full-res image path
         vlm_img_path = _resize_for_vlm(image_path, self.max_dim)
@@ -990,6 +1005,7 @@ class PiAgent:
                         observation_summary=f"Terminated with {len(damage_items)} item(s)",
                         observation_data={"damage_items": damage_items},
                         elapsed_s=round(time.time() - t_action, 3),
+                        thought=turn.thought,
                     ))
                     logger.info(
                         f"PiAgent: Terminate called — {len(damage_items)} damage item(s)"
@@ -997,6 +1013,7 @@ class PiAgent:
                     return {
                         "damage_items":         damage_items,
                         "vlm_detections":       self._vlm_detections,
+                        "internal_inferences":  self._internal_inferences,
                         "annotated_image_path": annotated_path,
                         "tool_calls":           tool_calls,
                         "warnings":             warnings,
@@ -1024,6 +1041,7 @@ class PiAgent:
                     observation_image_path=result.get("image_path"),
                     observation_data=result.get("data"),
                     elapsed_s=elapsed,
+                    thought=turn.thought,
                 ))
 
                 # Side-channel capture: the VLM's own damage detections (for the
@@ -1062,6 +1080,7 @@ class PiAgent:
         return {
             "damage_items":         fallback_items,
             "vlm_detections":       self._vlm_detections,
+            "internal_inferences":  self._internal_inferences,
             "annotated_image_path": annotated_path,
             "tool_calls":           tool_calls,
             "warnings":             warnings,
@@ -1221,6 +1240,45 @@ class PiAgent:
                     "type": "image",
                     "image_path": out,
                     "summary": f"Part detection: '{query}'",
+                }
+
+            elif name == "infer_internal_damage":
+                part     = str(args.get("part", "")).strip().lower()
+                severity = str(args.get("severity", "")).strip().lower()
+                if not part or not severity:
+                    return {
+                        "type": "error",
+                        "error": "infer_internal_damage requires 'part' and 'severity' arguments",
+                        "summary": "missing arguments",
+                    }
+                if severity == "minor":
+                    return {
+                        "type": "json",
+                        "data": {"internal_components": [], "note": "minor damage — no internal inference needed"},
+                        "summary": "skipped: minor damage has no likely internal damage",
+                    }
+                internal = lookup_internal(part, severity)
+                # Store in side-channel so orchestrator can include in report.
+                self._internal_inferences.append({
+                    "exterior_part":     part,
+                    "exterior_severity": severity,
+                    "likely_internal":   internal,
+                })
+                logger.info(
+                    f"infer_internal_damage: {part}/{severity} → {len(internal)} component(s): {internal}"
+                )
+                return {
+                    "type": "json",
+                    "data": {
+                        "exterior_part":       part,
+                        "severity":            severity,
+                        "internal_components": internal,
+                        "note": (
+                            "These internal components may be damaged even if not visible externally. "
+                            "Factor them into your assessment when appropriate."
+                        ),
+                    },
+                    "summary": f"Internal inference: {part}/{severity} → {internal}",
                 }
 
             else:

@@ -1,0 +1,348 @@
+{
+  "trajectory_id": "5d523aaae4864f2dba46a04363a95e4c",
+  "image_path": "/Users/tjhalani/Desktop/mvp_backend/veh_dmg_detection/data/new_uploads/219fff078d9b4acb93ec51993c3ebebe.jpg",
+  "image_width": 3264,
+  "image_height": 2448,
+  "created_at": "2026-06-23T05:54:19.407623+00:00",
+  "model_id": "qwen3.5:9b",
+  "steps": [
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "run_damage_detection",
+        "arguments": {
+          "reason": "Identifying and classifying all visible damage on the vehicle."
+        }
+      },
+      "observation_type": "image",
+      "observation_summary": "VLM detected 7 damage region(s): 2× crack, 1× crumpled, 1× dent, 2× missing_part, 1× paint_damage",
+      "observation_image_path": "data/uploads/vlm_annotated/vlm_ded756ec.jpg",
+      "observation_data": null,
+      "thought": "Running initial damage detection to identify and classify all visible damage.",
+      "elapsed_s": 23.428
+    },
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "infer_internal_damage",
+        "arguments": {
+          "part": "hood",
+          "severity": "moderate"
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Internal inference: hood/moderate → ['hood_latch', 'hood_hinges', 'radiator_support', 'wiring_harness']",
+      "observation_image_path": null,
+      "observation_data": {
+        "exterior_part": "hood",
+        "severity": "moderate",
+        "internal_components": [
+          "hood_latch",
+          "hood_hinges",
+          "radiator_support",
+          "wiring_harness"
+        ],
+        "note": "These internal components may be damaged even if not visible externally. Factor them into your assessment when appropriate."
+      },
+      "thought": "Running initial damage detection to identify and classify all visible damage.",
+      "elapsed_s": 0.0
+    },
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "infer_internal_damage",
+        "arguments": {
+          "part": "front_bumper",
+          "severity": "severe"
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Internal inference: front_bumper/severe → ['bumper_beam', 'frame_rails', 'cooling_system', 'headlight_brackets', 'crash_absorber', 'steering_rack']",
+      "observation_image_path": null,
+      "observation_data": {
+        "exterior_part": "front_bumper",
+        "severity": "severe",
+        "internal_components": [
+          "bumper_beam",
+          "frame_rails",
+          "cooling_system",
+          "headlight_brackets",
+          "crash_absorber",
+          "steering_rack"
+        ],
+        "note": "These internal components may be damaged even if not visible externally. Factor them into your assessment when appropriate."
+      },
+      "thought": "Running initial damage detection to identify and classify all visible damage.",
+      "elapsed_s": 0.0
+    },
+    {
+      "turn_index": 0,
+      "action": {
+        "name": "infer_internal_damage",
+        "arguments": {
+          "part": "grill",
+          "severity": "moderate"
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Internal inference: grill/moderate → ['radiator_support', 'grille_brackets', 'cooling_fan_shroud']",
+      "observation_image_path": null,
+      "observation_data": {
+        "exterior_part": "grill",
+        "severity": "moderate",
+        "internal_components": [
+          "radiator_support",
+          "grille_brackets",
+          "cooling_fan_shroud"
+        ],
+        "note": "These internal components may be damaged even if not visible externally. Factor them into your assessment when appropriate."
+      },
+      "thought": "Running initial damage detection to identify and classify all visible damage.",
+      "elapsed_s": 0.0
+    },
+    {
+      "turn_index": 1,
+      "action": {
+        "name": "Terminate",
+        "arguments": {
+          "damage_items": [
+            {
+              "damage_type": "crumpled",
+              "part": "hood",
+              "severity": "severe",
+              "confidence": 0.95,
+              "bbox_pct": [
+                12,
+                8,
+                64,
+                37
+              ]
+            },
+            {
+              "damage_type": "missing_part",
+              "part": "radiator_support",
+              "severity": "severe",
+              "confidence": 0.92,
+              "bbox_pct": [
+                48,
+                35,
+                78,
+                62
+              ]
+            },
+            {
+              "damage_type": "missing_part",
+              "part": "fog_lamp",
+              "severity": "moderate",
+              "confidence": 0.85,
+              "bbox_pct": [
+                18,
+                52,
+                42,
+                70
+              ]
+            },
+            {
+              "damage_type": "crack",
+              "part": "front_bumper",
+              "severity": "moderate",
+              "confidence": 0.78,
+              "bbox_pct": [
+                36,
+                48,
+                58,
+                68
+              ]
+            },
+            {
+              "damage_type": "dent",
+              "part": "front_bumper",
+              "severity": "moderate",
+              "confidence": 0.75,
+              "bbox_pct": [
+                12,
+                42,
+                32,
+                62
+              ]
+            },
+            {
+              "damage_type": "crack",
+              "part": "front_bumper",
+              "severity": "moderate",
+              "confidence": 0.72,
+              "bbox_pct": [
+                8,
+                50,
+                28,
+                70
+              ]
+            },
+            {
+              "damage_type": "paint_damage",
+              "part": "hood",
+              "severity": "minor",
+              "confidence": 0.8,
+              "bbox_pct": [
+                46,
+                10,
+                62,
+                30
+              ]
+            }
+          ]
+        }
+      },
+      "observation_type": "json",
+      "observation_summary": "Terminated with 7 item(s)",
+      "observation_image_path": null,
+      "observation_data": {
+        "damage_items": [
+          {
+            "damage_type": "crumpled",
+            "part": "hood",
+            "severity": "severe",
+            "confidence": 0.95,
+            "bbox_pct": [
+              12,
+              8,
+              64,
+              37
+            ]
+          },
+          {
+            "damage_type": "missing_part",
+            "part": "radiator_support",
+            "severity": "severe",
+            "confidence": 0.92,
+            "bbox_pct": [
+              48,
+              35,
+              78,
+              62
+            ]
+          },
+          {
+            "damage_type": "missing_part",
+            "part": "fog_lamp",
+            "severity": "moderate",
+            "confidence": 0.85,
+            "bbox_pct": [
+              18,
+              52,
+              42,
+              70
+            ]
+          },
+          {
+            "damage_type": "crack",
+            "part": "front_bumper",
+            "severity": "moderate",
+            "confidence": 0.78,
+            "bbox_pct": [
+              36,
+              48,
+              58,
+              68
+            ]
+          },
+          {
+            "damage_type": "dent",
+            "part": "front_bumper",
+            "severity": "moderate",
+            "confidence": 0.75,
+            "bbox_pct": [
+              12,
+              42,
+              32,
+              62
+            ]
+          },
+          {
+            "damage_type": "crack",
+            "part": "front_bumper",
+            "severity": "moderate",
+            "confidence": 0.72,
+            "bbox_pct": [
+              8,
+              50,
+              28,
+              70
+            ]
+          },
+          {
+            "damage_type": "paint_damage",
+            "part": "hood",
+            "severity": "minor",
+            "confidence": 0.8,
+            "bbox_pct": [
+              46,
+              10,
+              62,
+              30
+            ]
+          }
+        ]
+      },
+      "thought": "All damages verified and internal inferences collected; ready to terminate.",
+      "elapsed_s": 0.0
+    }
+  ],
+  "final_damage_map": [
+    {
+      "damage": "crumpled",
+      "part": "hood",
+      "severity": "severe",
+      "cost_min": 15000,
+      "cost_max": 45000
+    },
+    {
+      "damage": "missing_part",
+      "part": "radiator_support",
+      "severity": "severe",
+      "cost_min": 3000,
+      "cost_max": 8000
+    },
+    {
+      "damage": "missing_part",
+      "part": "fog_lamp",
+      "severity": "moderate",
+      "cost_min": 4000,
+      "cost_max": 12000
+    },
+    {
+      "damage": "crack",
+      "part": "front_bumper",
+      "severity": "moderate",
+      "cost_min": 5000,
+      "cost_max": 15000
+    },
+    {
+      "damage": "dent",
+      "part": "front_bumper",
+      "severity": "moderate",
+      "cost_min": 8000,
+      "cost_max": 25000
+    },
+    {
+      "damage": "crack",
+      "part": "front_bumper",
+      "severity": "moderate",
+      "cost_min": 5000,
+      "cost_max": 15000
+    },
+    {
+      "damage": "paint_damage",
+      "part": "hood",
+      "severity": "minor",
+      "cost_min": 5000,
+      "cost_max": 12000
+    }
+  ],
+  "total_min": 45000,
+  "total_max": 132000,
+  "total_elapsed_s": 59.98,
+  "filter_status": "unfiltered",
+  "filter_reason": null,
+  "quality_score": 0.0
+}

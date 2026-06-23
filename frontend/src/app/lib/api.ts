@@ -24,9 +24,27 @@ export interface DetectionWithBBox {
   confidence: number; // 0.0–1.0
 }
 
+export interface InternalComponentEntry {
+  component: string;
+  damage_type: string;
+  severity: string;
+  cost_min: number;
+  cost_max: number;
+}
+
+export interface InternalDamageInference {
+  exterior_part: string;
+  exterior_severity: string;
+  likely_internal: string[];
+  costed_components: InternalComponentEntry[];
+  subtotal_min: number;
+  subtotal_max: number;
+}
+
 export interface FinalDamageReport {
   image_path: string;
   damage_part_map: DamagePartEntry[];
+  internal_damage_inferences: InternalDamageInference[];
   detections_with_bbox: DetectionWithBBox[];
   merged_detections: Record<string, unknown>[];
   total_min: number;

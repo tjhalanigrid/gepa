@@ -14,6 +14,7 @@ import {
   type FinalDamageReport,
   type DetectionWithBBox,
   type DamagePartEntry,
+  type InternalDamageInference,
 } from "../../lib/api";
 import { AnnotatedImage, CLASS_COLORS } from "./AnnotatedImage";
 import { ReviewPanel } from "./ReviewPanel";
@@ -67,6 +68,7 @@ export function InspectionPage({ onNavigate, activeVehicle }: InspectionPageProp
   const [imageView, setImageView] = useState<"boxes" | "mask" | "merged">("boxes");
   const [totalMin, setTotalMin] = useState(0);
   const [totalMax, setTotalMax] = useState(0);
+  const [internalInferences, setInternalInferences] = useState<InternalDamageInference[]>([]);
   const [approval, setApproval] = useState<string>("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +176,7 @@ export function InspectionPage({ onNavigate, activeVehicle }: InspectionPageProp
     setProgress(8);
     setResults([]);
     setDetections([]);
+    setInternalInferences([]);
     setMaskUrl(null);
     setMaskFailed(false);
     setMergedUrl(null);
@@ -218,6 +221,7 @@ export function InspectionPage({ onNavigate, activeVehicle }: InspectionPageProp
       setWarnings(report.warnings ?? []);
       setTotalMin(report.total_min);
       setTotalMax(report.total_max);
+      setInternalInferences(report.internal_damage_inferences ?? []);
       setApproval(report.approval_decision);
       setProgress(100);
       setAnalysisDone(true);
@@ -712,6 +716,30 @@ export function InspectionPage({ onNavigate, activeVehicle }: InspectionPageProp
                   ))
                 )}
               </div>
+
+              {internalInferences.length > 0 && (
+                <div style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: "14px", marginTop: "14px" }}>
+                  <h4 style={{ fontSize: "13px", fontWeight: 700, color: "#0a0a0a", marginBottom: "4px" }}>Internal Damage (Inferred)</h4>
+                  <p style={{ fontSize: "10px", color: "#888882", marginBottom: "10px" }}>Hidden components likely damaged based on exterior severity</p>
+                  {internalInferences.map((inf, gi) => (
+                    <div key={gi} style={{ marginBottom: "12px", background: "#fafaf7", borderRadius: "6px", padding: "10px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#0a0a0a" }}>
+                          {prettifyLabel(inf.exterior_part)} ({inf.exterior_severity})
+                        </span>
+                        <span style={{ fontSize: "10px", color: "#444440" }}>{formatCostRange(inf.subtotal_min, inf.subtotal_max)}</span>
+                      </div>
+                      {inf.costed_components.map((c, ci) => (
+                        <div key={ci} style={{ display: "flex", gap: "8px", marginBottom: "4px", paddingLeft: "8px" }}>
+                          <span style={{ fontSize: "10px", color: "#555550", minWidth: "130px" }}>{prettifyLabel(c.component)}</span>
+                          <span style={{ fontSize: "10px", color: "#888882", flex: 1 }}>{c.damage_type.replace(/_/g, " ")}</span>
+                          <span style={{ fontSize: "10px", color: "#444440" }}>{formatCostRange(c.cost_min, c.cost_max)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
